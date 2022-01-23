@@ -1,0 +1,8 @@
+FROM python:3.7-alpine
+ENV TELEGRAM_BOT_TOKEN="42:42"
+WORKDIR /code
+RUN apk add --no-cache gcc musl-dev linux-headers tzdata
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "a2exams_bot.py"]

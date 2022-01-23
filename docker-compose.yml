@@ -1,0 +1,21 @@
+version: "3.7"
+services:
+  checker:
+    build:
+      context: .
+      dockerfile: Dockerfile_checker
+    volumes:
+      - ./output:/code/output
+    environment:
+      TZ: Europe/Prague
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile_bot
+    volumes:
+      - ./output:/code/output
+    environment:
+      TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
+      TZ: Europe/Prague
+  redis:
+    image: "redis:alpine"

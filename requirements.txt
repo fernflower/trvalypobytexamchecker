@@ -1,0 +1,10 @@
+# checker
+asyncio
+beautifulsoup4
+lxml
+requests
+unidecode
+
+# bot
+python-telegram-bot
+unidecode
