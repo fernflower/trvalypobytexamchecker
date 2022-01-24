@@ -7,4 +7,5 @@ unidecode
 
 # bot
 python-telegram-bot
+redis
 unidecode
