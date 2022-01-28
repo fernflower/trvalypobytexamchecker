@@ -50,8 +50,9 @@ def track(update: Update, context: CallbackContext) -> None:
     cities_str = ','.join(sorted(requested_cities))
     if requested_cities:
         invalid_options = set(requested_cities) - set(old_data.keys())
-        cities_str = ','.join(sorted(set(requested_cities) - invalid_options))
-        error_msg = f'No exams in {",".join(invalid_options)}\n'
+        if invalid_options:
+            cities_str = ','.join(sorted(set(requested_cities) - invalid_options))
+            error_msg = f'No exams in {",".join(invalid_options)}\n'
     # update tracking information for the given user
     _set_tracked_cities_str(update.effective_message.chat_id, cities_str)
     msg = f'{error_msg}You are tracking exam slots in {cities_str or "all cities"}'
