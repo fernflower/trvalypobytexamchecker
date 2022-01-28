@@ -16,6 +16,7 @@ services:
       - ./output:/code/output
     environment:
       TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
+      DEVELOPER_CHAT_ID: "$DEVELOPER_CHAT_ID"
       TZ: Europe/Prague
     depends_on:
       - redis
