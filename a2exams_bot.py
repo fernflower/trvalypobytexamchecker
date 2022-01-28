@@ -72,6 +72,11 @@ def mystatus(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(message)
 
 
+def users(update: Update, context: CallbackContext) -> None:
+    total_users = len(_get_all_subscribers())
+    update.message.reply_text(f'{total_users} users are subscribed for updates')
+
+
 def inform_about_change(context: CallbackContext) -> None:
     global old_data
     subscribers = _get_all_subscribers()
@@ -119,6 +124,7 @@ def run():
     updater.dispatcher.add_handler(CommandHandler('track', track))
     updater.dispatcher.add_handler(CommandHandler('notrack', notrack))
     updater.dispatcher.add_handler(CommandHandler('mystatus', mystatus))
+    updater.dispatcher.add_handler(CommandHandler('users', users))
     updater.dispatcher.add_error_handler(error_handler)
     updater.job_queue.run_repeating(inform_about_change, interval=UPDATE_INTERVAL, first=0)
     updater.start_polling()
