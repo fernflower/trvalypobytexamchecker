@@ -109,7 +109,7 @@ def diff_to_str(new_data, old_data=None, cities=None):
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
     If previous state is passed then only changes to the state will be accounted for.
     """
-    cities = cities or new_data.keys()
+    cities = [c for c in cities if c in new_data] if cities else new_data.keys()
     msg = ''
     for city in cities:
         no_diacrytics_city = unidecode.unidecode(city)

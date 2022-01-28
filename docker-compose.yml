@@ -17,5 +17,13 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
       TZ: Europe/Prague
+    depends_on:
+      - redis
   redis:
     image: "redis:alpine"
+    command: redis-server --appendonly yes
+    volumes:
+       - ./storage/redis/data:/data
+
+volumes:
+  redis-data:
