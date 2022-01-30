@@ -1,14 +1,19 @@
 """A telegram bot to check and track A2 exams registration"""
 
+import html
+import json
+import logging
 import os
+import traceback
 
 import redis
-from telegram import Update
+from telegram import ParseMode, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
 import check_a2_slots
 
+NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
@@ -16,18 +21,19 @@ DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 old_data = check_a2_slots.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 
-
-def check(update: Update, context: CallbackContext) -> None:
-    schools = check_a2_slots.get_schools_from_file(cities_filter=[
-        unidecode.unidecode(c).lower().capitalize() for c in context.args])
-    message = check_a2_slots.diff_to_str(schools)
-    update.message.reply_text(message)
+logger = logging.getLogger(__name__)
 
 
-def cities(update: Update, context: CallbackContext) -> None:
-    schools = check_a2_slots.get_schools_from_file()
-    all_cities = sorted(schools.keys())
-    update.message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
+def _vet_requested_cities(user_requested_cities):
+    """Returns a tuple (cities_ok, cities_error) """
+    requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in user_requested_cities]
+    if requested_cities:
+        invalid_options = set(requested_cities) - set(old_data.keys())
+        if invalid_options:
+            cities_ok = sorted(set(requested_cities) - invalid_options)
+            return (cities_ok, sorted(invalid_options))
+        return (sorted(requested_cities), [])
+    return ([], [])
 
 
 def _get_tracked_cities_str(chat_id):
@@ -42,18 +48,37 @@ def _set_tracked_cities_str(chat_id, cities_str):
 
 def _get_all_subscribers():
     # NOTE(ivasilev) redis stores bytes, need to explicitly call decode to get strings
-    return [chat_id.decode('utf-8') for chat_id in REDIS.keys(pattern='*')]
+    if not NOTIFICATIONS_PAUSED:
+        return [chat_id.decode('utf-8') for chat_id in REDIS.keys(pattern='*')]
+    return [DEVELOPER_CHAT_ID]
+
+
+def _is_admin(chat_id):
+    return int(chat_id) == int(DEVELOPER_CHAT_ID)
+
+
+def check(update: Update, context: CallbackContext) -> None:
+    requested_cities, error_cities = _vet_requested_cities(context.args)
+    error_msg = ''
+    if error_cities:
+        error_msg = f'No exams in {",".join(error_cities)}\n'
+    schools = check_a2_slots.get_schools_from_file(cities_filter=requested_cities)
+    msg = check_a2_slots.diff_to_str(schools)
+    update.message.reply_text(f'{error_msg}{msg}')
+
+
+def cities(update: Update, context: CallbackContext) -> None:
+    schools = check_a2_slots.get_schools_from_file()
+    all_cities = sorted(schools.keys())
+    update.message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
 
 
 def track(update: Update, context: CallbackContext) -> None:
     error_msg = ''
-    requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in context.args]
+    requested_cities, error_cities = _vet_requested_cities(context.args)
     cities_str = ','.join(sorted(requested_cities))
-    if requested_cities:
-        invalid_options = set(requested_cities) - set(old_data.keys())
-        if invalid_options:
-            cities_str = ','.join(sorted(set(requested_cities) - invalid_options))
-            error_msg = f'No exams in {",".join(invalid_options)}\n'
+    if error_cities:
+        error_msg = f'No exams in {",".join(error_cities)}\n'
     # update tracking information for the given user
     _set_tracked_cities_str(update.effective_message.chat_id, cities_str)
     msg = f'{error_msg}You are tracking exam slots in {cities_str or "all cities"}'
@@ -87,6 +112,33 @@ def inform_about_change(context: CallbackContext) -> None:
             message = check_a2_slots.diff_to_str(new_data, old_data, chosen_cities)
             context.bot.send_message(chat_id=chat_id, text=message or "No change")
     old_data = new_data
+
+
+def admin_broadcast(update: Update, context: CallbackContext) -> None:
+    if not _is_admin(update.effective_message.chat_id):
+        update.message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
+    else:
+        message = ' '.join(context.args)
+        for chat_id in _get_all_subscribers():
+            context.bot.send_message(chat_id=chat_id, text=message)
+
+
+def admin_pause(update: Update, context: CallbackContext) -> None:
+    if not _is_admin(update.effective_message.chat_id):
+        update.message.reply_text('This command is restricted for admin users only')
+    else:
+        global NOTIFICATIONS_PAUSED
+        NOTIFICATIONS_PAUSED = True
+        context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text='Pausing notifications for all subscribers')
+
+
+def admin_resume(update: Update, context: CallbackContext) -> None:
+    if not _is_admin(update.effective_message.chat_id):
+        update.message.reply_text('This command is restricted for admin users only')
+    else:
+        global NOTIFICATIONS_PAUSED
+        NOTIFICATIONS_PAUSED = False
+        context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text='Resuming notifications for all subscribers')
 
 
 # NOTE(ivasilev) Shamelessly borrowed from
@@ -125,6 +177,9 @@ def run():
     updater.dispatcher.add_handler(CommandHandler('notrack', notrack))
     updater.dispatcher.add_handler(CommandHandler('mystatus', mystatus))
     updater.dispatcher.add_handler(CommandHandler('users', users))
+    updater.dispatcher.add_handler(CommandHandler('adminbroadcast', admin_broadcast))
+    updater.dispatcher.add_handler(CommandHandler('adminpause', admin_pause))
+    updater.dispatcher.add_handler(CommandHandler('adminresume', admin_resume))
     updater.dispatcher.add_error_handler(error_handler)
     updater.job_queue.run_repeating(inform_about_change, interval=UPDATE_INTERVAL, first=0)
     updater.start_polling()
