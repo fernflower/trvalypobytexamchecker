@@ -1,0 +1,14 @@
+[build-system]
+requires = [
+    "asyncio",
+    "beautifulsoup4",
+    "lxml",
+    "pytest",
+    "requests",
+    "unidecode",
+
+    "python-telegram-bot",
+    "redis",
+    "unidecode"
+]
+build-backend = "setuptools.build_meta"

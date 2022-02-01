@@ -4,6 +4,7 @@ beautifulsoup4
 lxml
 requests
 unidecode
+pytest
 
 # bot
 python-telegram-bot

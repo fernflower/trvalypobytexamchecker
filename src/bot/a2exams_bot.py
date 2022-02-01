@@ -11,14 +11,14 @@ from telegram import ParseMode, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
-import check_a2_slots
+from checker import a2exams_checker
 
 NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 
-old_data = check_a2_slots.get_schools_from_file()
+old_data = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 
 logger = logging.getLogger(__name__)
@@ -62,13 +62,13 @@ def check(update: Update, context: CallbackContext) -> None:
     error_msg = ''
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
-    schools = check_a2_slots.get_schools_from_file(cities_filter=requested_cities)
-    msg = check_a2_slots.diff_to_str(schools)
+    schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
+    msg = a2exams_checker.diff_to_str(schools)
     update.message.reply_text(f'{error_msg}{msg}')
 
 
 def cities(update: Update, context: CallbackContext) -> None:
-    schools = check_a2_slots.get_schools_from_file()
+    schools = a2exams_checker.get_schools_from_file()
     all_cities = sorted(schools.keys())
     update.message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
 
@@ -105,11 +105,11 @@ def users(update: Update, context: CallbackContext) -> None:
 def inform_about_change(context: CallbackContext) -> None:
     global old_data
     subscribers = _get_all_subscribers()
-    new_data = check_a2_slots.get_schools_from_file()
-    if old_data and check_a2_slots.has_changes(new_data, old_data):
+    new_data = a2exams_checker.get_schools_from_file()
+    if not old_data or a2exams_checker.has_changes(new_data, old_data):
         for chat_id in subscribers:
             chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
-            message = check_a2_slots.diff_to_str(new_data, old_data, chosen_cities)
+            message = a2exams_checker.diff_to_str(new_data, old_data, chosen_cities)
             context.bot.send_message(chat_id=chat_id, text=message or "No change")
     old_data = new_data
 
