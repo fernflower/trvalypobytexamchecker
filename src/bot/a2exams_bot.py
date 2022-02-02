@@ -64,13 +64,13 @@ def check(update: Update, context: CallbackContext) -> None:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
     msg = a2exams_checker.diff_to_str(schools)
-    update.message.reply_text(f'{error_msg}{msg}')
+    update.effective_message.reply_text(f'{error_msg}{msg}')
 
 
 def cities(update: Update, context: CallbackContext) -> None:
     schools = a2exams_checker.get_schools_from_file()
     all_cities = sorted(schools.keys())
-    update.message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
+    update.effective_message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
 
 
 def track(update: Update, context: CallbackContext) -> None:
@@ -82,24 +82,24 @@ def track(update: Update, context: CallbackContext) -> None:
     # update tracking information for the given user
     _set_tracked_cities_str(update.effective_message.chat_id, cities_str)
     msg = f'{error_msg}You are tracking exam slots in {cities_str or "all cities"}'
-    update.message.reply_text(msg)
+    update.effective_message.reply_text(msg)
 
 
 def notrack(update: Update, context: CallbackContext) -> None:
     REDIS.delete(update.effective_message.chat_id)
-    update.message.reply_text(f'You are no longer subscribed for updates')
+    update.effective_message.reply_text(f'You are no longer subscribed for updates')
 
 
 def mystatus(update: Update, context: CallbackContext) -> None:
     tracked_cities = _get_tracked_cities_str(update.effective_message.chat_id)
     message = ('You are not subscribed for any updates, to subscribe use /track' if not tracked_cities else
                f'You are subscribed for updates in {tracked_cities}')
-    update.message.reply_text(message)
+    update.effective_message.reply_text(message)
 
 
 def users(update: Update, context: CallbackContext) -> None:
     total_users = len(_get_all_subscribers())
-    update.message.reply_text(f'{total_users} users are subscribed for updates')
+    update.effective_message.reply_text(f'{total_users} users are subscribed for updates')
 
 
 def inform_about_change(context: CallbackContext) -> None:
@@ -116,7 +116,7 @@ def inform_about_change(context: CallbackContext) -> None:
 
 def admin_broadcast(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
+        update.effective_message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
     else:
         message = ' '.join(context.args)
         for chat_id in _get_all_subscribers():
@@ -125,7 +125,7 @@ def admin_broadcast(update: Update, context: CallbackContext) -> None:
 
 def admin_pause(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text('This command is restricted for admin users only')
+        update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         global NOTIFICATIONS_PAUSED
         NOTIFICATIONS_PAUSED = True
@@ -134,7 +134,7 @@ def admin_pause(update: Update, context: CallbackContext) -> None:
 
 def admin_resume(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text('This command is restricted for admin users only')
+        update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         global NOTIFICATIONS_PAUSED
         NOTIFICATIONS_PAUSED = False
