@@ -1,4 +1,5 @@
 import copy
+import tempfile
 
 import pytest
 
@@ -36,6 +37,11 @@ CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hr
 def test_parse_main_page(main_page_html):
     parsed_cities = a2exams_checker._html_to_list(main_page_html, tag='div', cls='town')
     assert set(CITIES) == parsed_cities.keys()
+    # Emulate the situation when something goes wrong and empty\different webpage is returned
+    parsed_cities = a2exams_checker._html_to_list('', tag='div', cls='town')
+    assert parsed_cities == {}
+    parsed_cities = a2exams_checker._html_to_list('<head><body>Oops</body></head>', tag='div', cls='town')
+    assert parsed_cities == {}
 
 
 def test_parse_city_page(city_page_html):
@@ -62,7 +68,7 @@ def _assert_matches(actual, expected):
     assert expected == actual_to_compare
 
 
-def test_diff_to_str():
+def test_diff_to_str_no_prev_state():
     # Test scenario 1 - no old_data passed. This should just print current status, nothing to compare to.
     new_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
     msg = a2exams_checker.diff_to_str(new_data)
@@ -75,6 +81,8 @@ def test_diff_to_str():
     expected = 'Brno :(\nPraha :(\nTábor :('
     _assert_matches(msg, expected)
 
+
+def test_diff_to_str_prev_state():
     # Test scenario 2 - old_data is passed. This should print a diff.
     old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
     new_data = copy.deepcopy(old_data)
@@ -103,3 +111,12 @@ def test_diff_to_str():
     msg = a2exams_checker.diff_to_str(new_data, old_data, cities=['Tabor', 'Praha'])
     expected_msg = 'Praha :('
     _assert_matches(msg, expected_msg)
+
+
+def test_diff_to_str_bad_fetch():
+    # Cornercase (also investigation of Issue #4) - bad html returned
+    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    bad_fetched = tempfile.NamedTemporaryFile()
+    new_data = a2exams_checker.get_schools_from_file(bad_fetched.name)
+    msg = a2exams_checker.diff_to_str(new_data, old_data, cities=['Tabor', 'Praha'])
+    assert msg == ''

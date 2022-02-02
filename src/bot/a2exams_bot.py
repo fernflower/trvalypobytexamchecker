@@ -24,11 +24,11 @@ REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 logger = logging.getLogger(__name__)
 
 
-def _vet_requested_cities(user_requested_cities):
+def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     """Returns a tuple (cities_ok, cities_error) """
     requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in user_requested_cities]
     if requested_cities:
-        invalid_options = set(requested_cities) - set(SCHOOLS_DATA.keys())
+        invalid_options = set(requested_cities) - set(source_of_truth.keys())
         if invalid_options:
             cities_ok = sorted(set(requested_cities) - invalid_options)
             return (cities_ok, sorted(invalid_options))
