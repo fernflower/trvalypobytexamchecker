@@ -18,7 +18,7 @@ UPDATE_INTERVAL = 20
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 
-old_data = a2exams_checker.get_schools_from_file()
+SCHOOLS_DATA = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def _vet_requested_cities(user_requested_cities):
     """Returns a tuple (cities_ok, cities_error) """
     requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in user_requested_cities]
     if requested_cities:
-        invalid_options = set(requested_cities) - set(old_data.keys())
+        invalid_options = set(requested_cities) - set(SCHOOLS_DATA.keys())
         if invalid_options:
             cities_ok = sorted(set(requested_cities) - invalid_options)
             return (cities_ok, sorted(invalid_options))
@@ -102,16 +102,20 @@ def users(update: Update, context: CallbackContext) -> None:
     update.effective_message.reply_text(f'{total_users} users are subscribed for updates')
 
 
+def _do_inform(context, chat_ids, new_state, prev_state):
+    """Asynchronous status update for subscribers is done here"""
+    for chat_id in chat_ids:
+        chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
+        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities)
+        context.bot.send_message(chat_id=chat_id, text=message or "No change")
+
+
 def inform_about_change(context: CallbackContext) -> None:
-    global old_data
-    subscribers = _get_all_subscribers()
+    global SCHOOLS_DATA
     new_data = a2exams_checker.get_schools_from_file()
-    if not old_data or a2exams_checker.has_changes(new_data, old_data):
-        for chat_id in subscribers:
-            chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
-            message = a2exams_checker.diff_to_str(new_data, old_data, chosen_cities)
-            context.bot.send_message(chat_id=chat_id, text=message or "No change")
-        old_data = new_data
+    if not SCHOOLS_DATA or a2exams_checker.has_changes(new_data, SCHOOLS_DATA):
+        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_data, SCHOOLS_DATA)
+        SCHOOLS_DATA = new_data
 
 
 def admin_broadcast(update: Update, context: CallbackContext) -> None:
