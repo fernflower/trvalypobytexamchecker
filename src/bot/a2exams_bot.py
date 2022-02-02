@@ -111,7 +111,7 @@ def inform_about_change(context: CallbackContext) -> None:
             chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
             message = a2exams_checker.diff_to_str(new_data, old_data, chosen_cities)
             context.bot.send_message(chat_id=chat_id, text=message or "No change")
-    old_data = new_data
+        old_data = new_data
 
 
 def admin_broadcast(update: Update, context: CallbackContext) -> None:
