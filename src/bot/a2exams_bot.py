@@ -67,7 +67,7 @@ def check(update: Update, context: CallbackContext) -> None:
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
-    msg = a2exams_checker.diff_to_str(schools)
+    msg = a2exams_checker.diff_to_str(schools, url_in_header=True)
     update.effective_message.reply_text(f'{error_msg}{msg}')
 
 
@@ -110,7 +110,7 @@ def _do_inform(context, chat_ids, new_state, prev_state):
     """Asynchronous status update for subscribers is done here"""
     for chat_id in chat_ids:
         chosen_cities = _get_tracked_cities(chat_id)
-        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities)
+        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=True)
         context.bot.send_message(chat_id=chat_id, text=message or "No change")
 
 

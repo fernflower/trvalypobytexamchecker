@@ -104,7 +104,7 @@ async def fetch_schools(url=URL, filename=LAST_FETCHED, tag='div', cls='town'):
     return _html_to_list(html, tag=tag, cls=cls)
 
 
-def diff_to_str(new_data, old_data=None, cities=None):
+def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
     If previous state is passed then only changes to the state will be accounted for.
@@ -133,6 +133,9 @@ def diff_to_str(new_data, old_data=None, cities=None):
     if msg:
         # Add date from last city processed
         msg = f'Update from {date}:\n{msg}'
+        # If requested - add url
+        if url_in_header:
+            msg = f'{URL}\n{msg}'
     return msg
 
 
