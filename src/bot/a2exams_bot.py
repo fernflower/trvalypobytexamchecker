@@ -11,24 +11,24 @@ from telegram import ParseMode, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
-import check_a2_slots
+from checker import a2exams_checker
 
 NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 
-old_data = check_a2_slots.get_schools_from_file()
+SCHOOLS_DATA = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 
 logger = logging.getLogger(__name__)
 
 
-def _vet_requested_cities(user_requested_cities):
+def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     """Returns a tuple (cities_ok, cities_error) """
     requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in user_requested_cities]
     if requested_cities:
-        invalid_options = set(requested_cities) - set(old_data.keys())
+        invalid_options = set(requested_cities) - set(source_of_truth.keys())
         if invalid_options:
             cities_ok = sorted(set(requested_cities) - invalid_options)
             return (cities_ok, sorted(invalid_options))
@@ -62,15 +62,15 @@ def check(update: Update, context: CallbackContext) -> None:
     error_msg = ''
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
-    schools = check_a2_slots.get_schools_from_file(cities_filter=requested_cities)
-    msg = check_a2_slots.diff_to_str(schools)
-    update.message.reply_text(f'{error_msg}{msg}')
+    schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
+    msg = a2exams_checker.diff_to_str(schools)
+    update.effective_message.reply_text(f'{error_msg}{msg}')
 
 
 def cities(update: Update, context: CallbackContext) -> None:
-    schools = check_a2_slots.get_schools_from_file()
+    schools = a2exams_checker.get_schools_from_file()
     all_cities = sorted(schools.keys())
-    update.message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
+    update.effective_message.reply_text(f'Exam takes place in the following cities:\n{", ".join(all_cities)}')
 
 
 def track(update: Update, context: CallbackContext) -> None:
@@ -82,41 +82,45 @@ def track(update: Update, context: CallbackContext) -> None:
     # update tracking information for the given user
     _set_tracked_cities_str(update.effective_message.chat_id, cities_str)
     msg = f'{error_msg}You are tracking exam slots in {cities_str or "all cities"}'
-    update.message.reply_text(msg)
+    update.effective_message.reply_text(msg)
 
 
 def notrack(update: Update, context: CallbackContext) -> None:
     REDIS.delete(update.effective_message.chat_id)
-    update.message.reply_text(f'You are no longer subscribed for updates')
+    update.effective_message.reply_text(f'You are no longer subscribed for updates')
 
 
 def mystatus(update: Update, context: CallbackContext) -> None:
     tracked_cities = _get_tracked_cities_str(update.effective_message.chat_id)
     message = ('You are not subscribed for any updates, to subscribe use /track' if not tracked_cities else
                f'You are subscribed for updates in {tracked_cities}')
-    update.message.reply_text(message)
+    update.effective_message.reply_text(message)
 
 
 def users(update: Update, context: CallbackContext) -> None:
     total_users = len(_get_all_subscribers())
-    update.message.reply_text(f'{total_users} users are subscribed for updates')
+    update.effective_message.reply_text(f'{total_users} users are subscribed for updates')
+
+
+def _do_inform(context, chat_ids, new_state, prev_state):
+    """Asynchronous status update for subscribers is done here"""
+    for chat_id in chat_ids:
+        chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
+        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities)
+        context.bot.send_message(chat_id=chat_id, text=message or "No change")
 
 
 def inform_about_change(context: CallbackContext) -> None:
-    global old_data
-    subscribers = _get_all_subscribers()
-    new_data = check_a2_slots.get_schools_from_file()
-    if old_data and check_a2_slots.has_changes(new_data, old_data):
-        for chat_id in subscribers:
-            chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
-            message = check_a2_slots.diff_to_str(new_data, old_data, chosen_cities)
-            context.bot.send_message(chat_id=chat_id, text=message or "No change")
-    old_data = new_data
+    global SCHOOLS_DATA
+    new_data = a2exams_checker.get_schools_from_file()
+    if not SCHOOLS_DATA or a2exams_checker.has_changes(new_data, SCHOOLS_DATA):
+        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_data, SCHOOLS_DATA)
+        SCHOOLS_DATA = new_data
 
 
 def admin_broadcast(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
+        update.effective_message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
     else:
         message = ' '.join(context.args)
         for chat_id in _get_all_subscribers():
@@ -125,7 +129,7 @@ def admin_broadcast(update: Update, context: CallbackContext) -> None:
 
 def admin_pause(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text('This command is restricted for admin users only')
+        update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         global NOTIFICATIONS_PAUSED
         NOTIFICATIONS_PAUSED = True
@@ -134,7 +138,7 @@ def admin_pause(update: Update, context: CallbackContext) -> None:
 
 def admin_resume(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.message.reply_text('This command is restricted for admin users only')
+        update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         global NOTIFICATIONS_PAUSED
         NOTIFICATIONS_PAUSED = False

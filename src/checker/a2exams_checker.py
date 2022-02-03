@@ -108,21 +108,22 @@ def diff_to_str(new_data, old_data=None, cities=None):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
     If previous state is passed then only changes to the state will be accounted for.
+
+    Cities parameter should be actual keys in schools data - no diacrytics
     """
     cities = [c for c in cities if c in new_data] if cities else new_data.keys()
     msg = ''
     for city in cities:
-        no_diacrytics_city = unidecode.unidecode(city)
-        city_czech_name = new_data[no_diacrytics_city]['city_name']
+        city_czech_name = new_data[city]['city_name']
         date = datetime.datetime.fromtimestamp(
-            new_data[no_diacrytics_city]['timestamp']).strftime('%d/%m/%Y %H:%M:%S')
+            new_data[city]['timestamp']).strftime('%d/%m/%Y %H:%M:%S')
         if not old_data:
             # Just show current state
-            m = (f'{city_czech_name} :(' if not new_data[no_diacrytics_city]['free_slots'] else
+            m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
                  f'{city_czech_name} :)')
-        elif old_data and old_data[no_diacrytics_city]['free_slots'] != new_data[no_diacrytics_city]['free_slots']:
+        elif old_data and old_data[city]['free_slots'] != new_data[city]['free_slots']:
             m = (f'{city_czech_name} :('
-                 if not new_data[no_diacrytics_city]['free_slots'] else
+                 if not new_data[city]['free_slots'] else
                  f'{city_czech_name} :)')
         else:
             # No change
@@ -143,10 +144,9 @@ def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
         fieldnames = ['timestamp', 'free_slots', 'city']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
-            no_diacrytics_city = unidecode.unidecode(city)
-            writer.writerow({'timestamp': schools[no_diacrytics_city]['timestamp'],
-                             'free_slots': schools[no_diacrytics_city]['free_slots'],
-                             'city': schools[no_diacrytics_city]['city_name']})
+            writer.writerow({'timestamp': schools[city]['timestamp'],
+                             'free_slots': schools[city]['free_slots'],
+                             'city': schools[city]['city_name']})
 
 
 def has_changes(new_data, old_data, chosen_cities=None):
@@ -162,14 +162,14 @@ async def main():
     schools = await fetch_schools(url=URL)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
-    cities = parsed_args.city or all_cities
+    cities = [unidecode(c.lower().capitalize()) for c in parsed_args.city or []] or all_cities
     try:
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
             new_data = await fetch_schools(url=URL)
             print(f"Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
-            if not old_data or any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities):
+            if not old_data or has_changes(new_data, old_data, cities):
                 print(diff_to_str(new_data, old_data, cities))
                 # update data
                 write_csv(new_data, cities, filename=CSV_FILENAME)
