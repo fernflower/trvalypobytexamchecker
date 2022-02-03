@@ -35,18 +35,22 @@ CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hr
 
 
 def test_parse_main_page(main_page_html):
-    parsed_cities = a2exams_checker._html_to_list(main_page_html, tag='div', cls='town')
+    parsed_cities = a2exams_checker._html_to_schools(main_page_html)
     assert set(CITIES) == parsed_cities.keys()
     # Emulate the situation when something goes wrong and empty\different webpage is returned
-    parsed_cities = a2exams_checker._html_to_list('', tag='div', cls='town')
+    parsed_cities = a2exams_checker._html_to_schools('')
     assert parsed_cities == {}
-    parsed_cities = a2exams_checker._html_to_list('<head><body>Oops</body></head>', tag='div', cls='town')
+    parsed_cities = a2exams_checker._html_to_schools('<head><body>Oops</body></head>')
     assert parsed_cities == {}
 
 
 def test_parse_city_page(city_page_html):
-    # TBD once school details page parsing is implemented
-    pass
+    parsed = a2exams_checker._html_to_exam_slots(city_page_html)
+    assert parsed['total'] == 7
+    assert parsed['details'] == [
+            ('26.02.2022, od 09:00', 0), ('09.03.2022, od 09:00', 2), ('26.03.2022, od 09:00', 5),
+            ('06.04.2022, od 09:00', 0), ('23.04.2022, od 09:00', 0), ('11.05.2022, od 09:00', 0),
+            ('08.06.2022, od 09:00', 0), ('25.06.2022, od 09:00', 0)]
 
 
 def test_get_schools():

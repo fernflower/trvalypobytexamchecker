@@ -40,15 +40,56 @@ async def _do_fetch(url):
         return resp.text
 
 
-def _html_to_list(html, tag, cls):
+def _extract_data(html, tag, cls):
+    soup = BeautifulSoup(html, features="lxml")
+    return [e.text.split() for e in soup.find_all(tag) if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+
+
+def _html_to_exam_slots(html, tag='div', cls='terminy'):
+    res = {'total': 0, 'details': []}
+    exams_data_per_school = _extract_data(html, tag, cls)
+    for exams_data in exams_data_per_school:
+        # Now turn a list of strings into a meaningful dictionary
+        date = ''
+        skip = 0
+        i = 0
+        for string in exams_data:
+            # the 5th element is either Obsazeno (no slots) or number of free slots
+            if skip > 0:
+                skip -= 1
+                continue
+            i += 1
+            if i % 6:
+                date += f'{"" if string.endswith(".") or string.endswith(",") else " "}{string}'
+                continue
+            # the critical element
+            if string == 'Obsazeno':
+                num = 0
+            else:
+                try:
+                    num = int(string)
+                except ValueError:
+                    num = 0
+                # the following 'volnych' 'mist' have to be skipped
+                skip = 2
+            # Save the data
+            res['details'].append((date, num))
+            # reset date and critical elem counter for next slot
+            date = ''
+            i = 0
+    # Now calculate total
+    res['total'] = sum(e[1] for e in res['details'])
+    return res
+
+
+def _html_to_schools(html, tag='div', cls='town'):
     """
     In case layout changes this function only has to be tuned to extract necessary data.
     Returned value is a dict with no-diacrytics-city-name used as keys
     """
     res = {}
     timestamp = datetime.datetime.now(tz=pytz.timezone(TZ)).timestamp()
-    soup = BeautifulSoup(html, features="lxml")
-    schools_data = [e.text.split() for e in soup.find_all(tag) if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+    schools_data = _extract_data(html, tag, cls)
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
         not_a_name_num, _ = next(((i, w) for (i, w) in enumerate(city_info) if w.startswith('(')), None)
@@ -98,7 +139,7 @@ def get_schools_from_file(filename=LAST_FETCHED, tag='div', cls='town', cities_f
         return {}
     with open(filename) as f:
         html = f.read()
-    res = _html_to_list(html, tag, cls)
+    res = _html_to_schools(html, tag, cls)
     if not cities_filter:
         return res
     return {k:v for (k, v) in res.items() if k in cities_filter}
@@ -113,7 +154,7 @@ async def fetch_schools(url=URL, filename=LAST_FETCHED, tag='div', cls='town'):
     html = await fetch(url, filename=filename)
     end = time.time()
     logger.debug(f'Fetched successfully in {end - start} seconds.')
-    return _html_to_list(html, tag=tag, cls=cls)
+    return _html_to_schools(html, tag=tag, cls=cls)
 
 
 def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
