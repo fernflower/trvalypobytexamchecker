@@ -36,10 +36,14 @@ def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     return ([], [])
 
 
-def _get_tracked_cities_str(chat_id):
+def _get_tracked_cities(chat_id):
     if REDIS.exists(chat_id):
         # NOTE(ivasilev) redis stores bytes, need to explicitly call decode to get strings
-        return REDIS.get(chat_id).decode('utf-8') or 'all cities'
+        return [c for c in REDIS.get(chat_id).decode('utf-8').split(',') if c.strip()]
+
+
+def _get_tracked_cities_str(chat_id):
+    return REDIS.get(chat_id).decode('utf-8') or "all cities"
 
 
 def _set_tracked_cities_str(chat_id, cities_str):
@@ -105,7 +109,7 @@ def users(update: Update, context: CallbackContext) -> None:
 def _do_inform(context, chat_ids, new_state, prev_state):
     """Asynchronous status update for subscribers is done here"""
     for chat_id in chat_ids:
-        chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
+        chosen_cities = _get_tracked_cities(chat_id)
         message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities)
         context.bot.send_message(chat_id=chat_id, text=message or "No change")
 
