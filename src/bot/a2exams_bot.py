@@ -1,5 +1,6 @@
 """A telegram bot to check and track A2 exams registration"""
 
+import copy
 import html
 import json
 import logging
@@ -118,7 +119,10 @@ def inform_about_change(context: CallbackContext) -> None:
     global SCHOOLS_DATA
     new_data = a2exams_checker.get_schools_from_file()
     if not SCHOOLS_DATA or a2exams_checker.has_changes(new_data, SCHOOLS_DATA):
-        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_data, SCHOOLS_DATA)
+        # Now deep copy new_data and old_data for every subscriber to get the same update
+        new_state = copy.deepcopy(new_data)
+        prev_state = copy.deepcopy(SCHOOLS_DATA)
+        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
         SCHOOLS_DATA = new_data
 
 
