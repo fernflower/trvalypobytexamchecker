@@ -53,6 +53,12 @@ def test_parse_city_page(city_page_html):
             ('08.06.2022, od 09:00', 0), ('25.06.2022, od 09:00', 0)]
 
 
+def test_get_urls(main_page_html):
+    urls = a2exams_checker._html_to_schools_urls(main_page_html)
+    assert urls.keys() == set(CITIES)
+    assert urls['Praha'] == 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996'
+
+
 def test_get_schools():
     schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
     assert schools_data.keys() == set(CITIES)

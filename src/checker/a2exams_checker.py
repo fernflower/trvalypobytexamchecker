@@ -40,9 +40,37 @@ async def _do_fetch(url):
         return resp.text
 
 
-def _extract_data(html, tag, cls):
+def _extract_data(html, tag, cls, strings_only=True):
     soup = BeautifulSoup(html, features="lxml")
-    return [e.text.split() for e in soup.find_all(tag) if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+    return [e.text.split() if strings_only else e for e in soup.find_all(tag)
+            if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+
+
+def _reconstruct_city_name(city_strings, no_diacrytics=True):
+    """ Returns a city name and positional number of first word after it
+    """
+    # Town may consist of several words - compensate for that
+    not_a_name_num, _ = next(((i, w) for (i, w) in enumerate(city_strings) if w.startswith('(')), (0, None))
+    city = ' '.join(city_strings[0: not_a_name_num])
+    if no_diacrytics:
+        city = unidecode.unidecode(city)
+    return city, not_a_name_num
+
+
+def _html_to_schools_urls(html, tag='div', cls='col-6'):
+    res = {}
+    tags = _extract_data(html, tag, cls, strings_only=False)
+    for tag in tags:
+        city_strings = tag.find('div').text.split()
+        if not city_strings:
+            continue
+        city_name, _ = _reconstruct_city_name(city_strings)
+        url = tag.find('a').attrs.get('href')
+        # This should filter out occasional non-city matches
+        if not url or not city_name:
+            continue
+        res[city_name] = f'{URL}{url}'
+    return res
 
 
 def _html_to_exam_slots(html, tag='div', cls='terminy'):
@@ -92,8 +120,7 @@ def _html_to_schools(html, tag='div', cls='town'):
     schools_data = _extract_data(html, tag, cls)
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
-        not_a_name_num, _ = next(((i, w) for (i, w) in enumerate(city_info) if w.startswith('(')), None)
-        city_name = ' '.join(city_info[0: not_a_name_num])
+        city_name, not_a_name_num = _reconstruct_city_name(city_info, no_diacrytics=False)
         total_schools = int(city_info[not_a_name_num].lstrip('('))
         free_slots = city_info[-1] == 'Vybrat'
         status = city_info[-1]
