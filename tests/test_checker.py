@@ -59,6 +59,19 @@ def test_get_urls(main_page_html):
     assert urls['Praha'] == 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996'
 
 
+def test_add_total_slots_column():
+    old_data = "1643015225.059401,False,Břeclav\n1643015225.059401,False,Hodonín\n"
+    new_data = "1643015225.059401,False,Břeclav,0\n1643015225.059401,False,Hodonín,0\n"
+
+    old_out = tempfile.NamedTemporaryFile()
+    with open(old_out.name, 'w') as f:
+        f.write(old_data)
+    a2exams_checker._add_total_slots_to_csv(old_out.name)
+    with open(old_out.name) as f:
+        data = f.read()
+        assert data == new_data
+
+
 def test_get_schools():
     schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
     assert schools_data.keys() == set(CITIES)

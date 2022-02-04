@@ -118,6 +118,7 @@ def _html_to_schools(html, tag='div', cls='town'):
     res = {}
     timestamp = datetime.datetime.now(tz=pytz.timezone(TZ)).timestamp()
     schools_data = _extract_data(html, tag, cls)
+    urls_data = _html_to_schools_urls(html)
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
         city_name, not_a_name_num = _reconstruct_city_name(city_info, no_diacrytics=False)
@@ -126,10 +127,13 @@ def _html_to_schools(html, tag='div', cls='town'):
         status = city_info[-1]
         city_name_no_diacrytics = unidecode.unidecode(city_name)
         res[city_name_no_diacrytics] = {'free_slots': free_slots,
+                                        # total slots might be updated later after school page is parsed
+                                        'total_slots': 0,
                                         'total_schools': total_schools,
                                         'status': status,
                                         'city_name': city_name,
-                                        'timestamp': timestamp}
+                                        'timestamp': timestamp,
+                                        'url': urls_data[city_name_no_diacrytics]}
     return res
 
 
@@ -141,15 +145,15 @@ def _parse_args(args, cities_choices):
     return parser.parse_args(args)
 
 
-async def fetch(url, filename=None):
+async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL):
     """
     Fetches recent version of registration website. If request fails for some reason will retry until success.
     Return html and saves it in a file if filename parameter is passed.
     """
     res = await _do_fetch(url=url)
     while not res:
-        print("Looks like connection error, will try again later")
-        await asyncio.sleep(random.randint(1, POLLING_INTERVAL))
+        print(f"Looks like connection error, will try {url} again later")
+        await asyncio.sleep(random.randint(1, retry_interval))
         res = await _do_fetch(url=url)
     # record new data
     if filename:
@@ -192,6 +196,20 @@ def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
         return ''
 
 
+async def fetch_exam_slots(url, tag='div', cls='terminy'):
+    html = await fetch(url, retry_interval=5)
+    return _html_to_exam_slots(html, tag=tag, cls=cls)
+
+
+async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED):
+    schools_data = await fetch_schools(url, filename)
+    # now fetch additional information for schools with open registration and update schools data
+    for city in [c for c in schools_data if schools_data[c]['free_slots']]:
+        exam_slots = await fetch_exam_slots(schools_data[city]['url'])
+        schools_data[city]['total'] = exam_slots['total']
+    return schools_data
+
+
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
@@ -226,17 +244,42 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     return msg
 
 
+def _add_total_slots_to_csv(filename=CSV_FILENAME):
+    if not os.path.isfile(CSV_FILENAME):
+        # nothing to do
+        return
+    updated_rows = []
+    with open(filename) as csvfile:
+        reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city'])
+        for row in reader:
+            # if there are 4 values already - nothing more to do, already updated
+            if len(row) > 3:
+                return
+            row.update({'total_slots': 0})
+            updated_rows.append(row)
+    # now rewrite original file
+    with open(filename, 'w') as csvfile:
+        fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
+        writer = csv.DictWriter(csvfile, fieldnames)
+        for row in updated_rows:
+            writer.writerow({'timestamp': row['timestamp'],
+                             'free_slots': row['free_slots'],
+                             'city': row['city'],
+                             'total_slots': row['total_slots']})
+
+
 def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
     """
     Dump exams registration information into csv.
     """
     with open(filename, 'a', newline='') as csvfile:
-        fieldnames = ['timestamp', 'free_slots', 'city']
+        fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
             writer.writerow({'timestamp': schools[city]['timestamp'],
                              'free_slots': schools[city]['free_slots'],
-                             'city': schools[city]['city_name']})
+                             'city': schools[city]['city_name'],
+                             'total_slots': schools[city]['total_slots']})
 
 
 def has_changes(new_data, old_data, chosen_cities=None):
@@ -248,8 +291,10 @@ def has_changes(new_data, old_data, chosen_cities=None):
 
 
 async def main():
+    # Make sure csv file has total_slots column
+    _add_total_slots_to_csv(CSV_FILENAME)
     # fetch initial data to set everything up (default choices for cities etc)
-    schools = await fetch_schools(url=URL)
+    schools = await fetch_schools_with_exam_slots(url=URL)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
     cities = [unidecode(c.lower().capitalize()) for c in parsed_args.city or []] or all_cities
@@ -257,7 +302,7 @@ async def main():
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
-            new_data = await fetch_schools(url=URL)
+            new_data = await fetch_schools_with_exam_slots(url=URL)
             date = timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):
