@@ -80,6 +80,9 @@ def test_diff_to_str_no_prev_state():
     msg = a2exams_checker.diff_to_str(new_data, cities=['Brno', 'Praha', 'Tabor', 'nosuchcity'])
     expected = 'Brno :(\nPraha :(\nTábor :('
     _assert_matches(msg, expected)
+    # Make sure URL is shown when requested
+    msg = a2exams_checker.diff_to_str(new_data, url_in_header=True)
+    assert msg.startswith(a2exams_checker.URL)
 
 
 def test_diff_to_str_prev_state():

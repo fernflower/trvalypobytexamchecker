@@ -1,5 +1,6 @@
 """A telegram bot to check and track A2 exams registration"""
 
+import copy
 import html
 import json
 import logging
@@ -36,10 +37,14 @@ def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     return ([], [])
 
 
-def _get_tracked_cities_str(chat_id):
+def _get_tracked_cities(chat_id):
     if REDIS.exists(chat_id):
         # NOTE(ivasilev) redis stores bytes, need to explicitly call decode to get strings
-        return REDIS.get(chat_id).decode('utf-8') or 'all cities'
+        return [c for c in REDIS.get(chat_id).decode('utf-8').split(',') if c.strip()]
+
+
+def _get_tracked_cities_str(chat_id):
+    return REDIS.get(chat_id).decode('utf-8') or "all cities"
 
 
 def _set_tracked_cities_str(chat_id, cities_str):
@@ -63,7 +68,7 @@ def check(update: Update, context: CallbackContext) -> None:
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
-    msg = a2exams_checker.diff_to_str(schools)
+    msg = a2exams_checker.diff_to_str(schools, url_in_header=True)
     update.effective_message.reply_text(f'{error_msg}{msg}')
 
 
@@ -105,8 +110,8 @@ def users(update: Update, context: CallbackContext) -> None:
 def _do_inform(context, chat_ids, new_state, prev_state):
     """Asynchronous status update for subscribers is done here"""
     for chat_id in chat_ids:
-        chosen_cities = [c for c in _get_tracked_cities_str(chat_id).split(',') if c.strip()]
-        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities)
+        chosen_cities = _get_tracked_cities(chat_id)
+        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=True)
         context.bot.send_message(chat_id=chat_id, text=message or "No change")
 
 
@@ -114,7 +119,10 @@ def inform_about_change(context: CallbackContext) -> None:
     global SCHOOLS_DATA
     new_data = a2exams_checker.get_schools_from_file()
     if not SCHOOLS_DATA or a2exams_checker.has_changes(new_data, SCHOOLS_DATA):
-        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_data, SCHOOLS_DATA)
+        # Now deep copy new_data and old_data for every subscriber to get the same update
+        new_state = copy.deepcopy(new_data)
+        prev_state = copy.deepcopy(SCHOOLS_DATA)
+        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
         SCHOOLS_DATA = new_data
 
 
