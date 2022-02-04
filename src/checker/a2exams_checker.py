@@ -223,9 +223,10 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
         city_czech_name = new_data[city]['city_name']
         date = timestamp_to_str(new_data[city]['timestamp'])
         if not old_data:
+            exam_slots_msg = '' if not new_data[city]['total_slots'] else f' ({new_data[city]["total_slots"]} slots)'
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
-                 f'{city_czech_name} :)')
+                 f'{city_czech_name} :){exam_slots_msg}')
         elif old_data and old_data[city]['free_slots'] != new_data[city]['free_slots']:
             m = (f'{city_czech_name} :('
                  if not new_data[city]['free_slots'] else

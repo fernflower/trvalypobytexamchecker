@@ -106,6 +106,12 @@ def test_diff_to_str_no_prev_state():
     # Make sure URL is shown when requested
     msg = a2exams_checker.diff_to_str(new_data, url_in_header=True)
     assert msg.startswith(a2exams_checker.URL)
+    # If schools has free slots and total_slots information is collected and > 0, then display it as well
+    new_data_free_slots = copy.deepcopy(new_data)
+    new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
+    msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['Praha'])
+    expected = 'Praha :) (42 slots)'
+    _assert_matches(msg, expected)
 
 
 def test_diff_to_str_prev_state():
