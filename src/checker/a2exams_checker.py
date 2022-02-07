@@ -22,6 +22,7 @@ OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
+DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 
 # set up logging
 logging.basicConfig()
@@ -210,6 +211,13 @@ async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED):
     return schools_data
 
 
+def _timestamp_to_date(timestamp_str, date_format=DATETIME_FORMAT):
+    try:
+        return datetime.datetime.fromtimestamp(float(timestamp_str)).strftime(date_format)
+    except TypeError:
+        return None
+
+
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
@@ -245,7 +253,8 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     return msg
 
 
-def _add_total_slots_to_csv(filename=CSV_FILENAME):
+def _apply_changes_to_csv(filename=CSV_FILENAME):
+    # Add 4th total_slots column and change from timestamp to date
     if not os.path.isfile(CSV_FILENAME):
         # nothing to do
         return
@@ -254,9 +263,10 @@ def _add_total_slots_to_csv(filename=CSV_FILENAME):
         reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city'])
         for row in reader:
             # if there are 4 values already - nothing more to do, already updated
-            if len(row) > 3:
-                return
-            row.update({'total_slots': 0})
+            if len(row) < 4:
+                row.update({'total_slots': 0})
+            if _timestamp_to_date(row['timestamp']):
+                row.update({'timestamp': _timestamp_to_date(row['timestamp'], DATE_FORMAT_GRAFANA)})
             updated_rows.append(row)
     # now rewrite original file
     with open(filename, 'w') as csvfile:
@@ -277,7 +287,8 @@ def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
         fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
-            writer.writerow({'timestamp': schools[city]['timestamp'],
+            date = _timestamp_to_date(schools[city]['timestamp'])
+            writer.writerow({'timestamp': date,
                              'free_slots': schools[city]['free_slots'],
                              'city': schools[city]['city_name'],
                              'total_slots': schools[city]['total_slots']})
@@ -293,7 +304,7 @@ def has_changes(new_data, old_data, chosen_cities=None):
 
 async def main():
     # Make sure csv file has total_slots column
-    _add_total_slots_to_csv(CSV_FILENAME)
+    _apply_changes_to_csv(CSV_FILENAME)
     # fetch initial data to set everything up (default choices for cities etc)
     schools = await fetch_schools_with_exam_slots(url=URL)
     all_cities = sorted(schools.keys())

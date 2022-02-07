@@ -61,12 +61,12 @@ def test_get_urls(main_page_html):
 
 def test_add_total_slots_column():
     old_data = "1643015225.059401,False,Břeclav\n1643015225.059401,False,Hodonín\n"
-    new_data = "1643015225.059401,False,Břeclav,0\n1643015225.059401,False,Hodonín,0\n"
+    new_data = "24/01/2022 10:07:05,False,Břeclav,0\n24/01/2022 10:07:05,False,Hodonín,0\n"
 
     old_out = tempfile.NamedTemporaryFile()
     with open(old_out.name, 'w') as f:
         f.write(old_data)
-    a2exams_checker._add_total_slots_to_csv(old_out.name)
+    a2exams_checker._apply_changes_to_csv(old_out.name)
     with open(old_out.name) as f:
         data = f.read()
         assert data == new_data
