@@ -108,11 +108,12 @@ def users(update: Update, context: CallbackContext) -> None:
 
 
 def _do_inform(context, chat_ids, new_state, prev_state):
-    """Asynchronous status update for subscribers is done here"""
+    """Status update for subscribers is done here"""
     for chat_id in chat_ids:
         chosen_cities = _get_tracked_cities(chat_id)
         message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=True)
-        context.bot.send_message(chat_id=chat_id, text=message or "No change")
+        default_message = f'{a2exams_checker.URL}\nA change has occured (nicer message WIP)'
+        context.bot.send_message(chat_id=chat_id, text=message or default_message)
 
 
 def inform_about_change(context: CallbackContext) -> None:
@@ -122,7 +123,10 @@ def inform_about_change(context: CallbackContext) -> None:
         # Now deep copy new_data and old_data for every subscriber to get the same update
         new_state = copy.deepcopy(new_data)
         prev_state = copy.deepcopy(SCHOOLS_DATA)
-        context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
+        # Issue #8 https://github.com/fernflower/trvalypobytexamchecker/issues/8
+        # context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
+        # For now stick to good old syncronous update
+        _do_inform(context, _get_all_subscribers(), new_state, prev_state)
         SCHOOLS_DATA = new_data
 
 
