@@ -145,11 +145,16 @@ def inform_about_change(context: CallbackContext) -> None:
 
 def admin_broadcast(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
-        update.effective_message.reply_text(f'This command is restricted for admin users {DEVELOPER_CHAT_ID} only, not for {update.effective_message.chat_id}')
+        update.effective_message.reply_text(f'This command is restricted for admin users only,'
+                                            f'not for {update.effective_message.chat_id}')
     else:
         message = ' '.join(context.args)
         for chat_id in _get_all_subscribers():
-            context.bot.send_message(chat_id=chat_id, text=message)
+            try:
+                context.bot.send_message(chat_id=chat_id, text=message)
+            except telegram.error.Unauthorized:
+                _unsubscribe(chat_id)
+                logger.info(f'User has stopped the bot - removing {chat_id} from subscribers')
 
 
 def admin_pause(update: Update, context: CallbackContext) -> None:
