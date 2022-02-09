@@ -8,7 +8,9 @@ import os
 import traceback
 
 import redis
+import telegram
 from telegram import ParseMode, Update
+from telegram.error import TelegramError
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
@@ -22,7 +24,10 @@ DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 SCHOOLS_DATA = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 
+# set up logging
+logging.basicConfig()
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
@@ -49,6 +54,10 @@ def _get_tracked_cities_str(chat_id):
 
 def _set_tracked_cities_str(chat_id, cities_str):
     REDIS.set(chat_id, cities_str)
+
+
+def _unsubscribe(chat_id):
+    REDIS.delete(chat_id)
 
 
 def _get_all_subscribers():
@@ -112,7 +121,14 @@ def _do_inform(context, chat_ids, new_state, prev_state):
     for chat_id in chat_ids:
         chosen_cities = _get_tracked_cities(chat_id)
         message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=True)
-        context.bot.send_message(chat_id=chat_id, text=message or "No change")
+        try:
+            context.bot.send_message(chat_id=chat_id, text=message or "No change")
+        except telegram.error.Unauthorized:
+            # the user has unsubscribed for good - remove him from subscribers
+            _unsubscribe(chat_id)
+            logger.info(f'Removing {chat_id} from subscribers')
+        except telegram.error.TelegramError as exc:
+            logger.error(f'An error has occurred during sending a message to {chat_id}: {exc}')
 
 
 def inform_about_change(context: CallbackContext) -> None:
@@ -122,6 +138,7 @@ def inform_about_change(context: CallbackContext) -> None:
         # Now deep copy new_data and old_data for every subscriber to get the same update
         new_state = copy.deepcopy(new_data)
         prev_state = copy.deepcopy(SCHOOLS_DATA)
+        logger.info(f'New state = {new_state}\nOld state = {prev_state}')
         context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
         SCHOOLS_DATA = new_data
 
