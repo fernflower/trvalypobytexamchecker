@@ -42,6 +42,11 @@ def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     return ([], [])
 
 
+def _dump_db_data():
+    chat_ids = _get_all_subscribers()
+    return '\n'.join([f"{chat_id}: {_get_tracked_cities_str(chat_id)}" for chat_id in chat_ids])
+
+
 def _get_tracked_cities(chat_id):
     if REDIS.exists(chat_id):
         # NOTE(ivasilev) redis stores bytes, need to explicitly call decode to get strings
@@ -177,6 +182,14 @@ def admin_resume(update: Update, context: CallbackContext) -> None:
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text='Resuming notifications for all subscribers')
 
 
+def admin_status(update: Update, context: CallbackContext) -> None:
+    if not _is_admin(update.effective_message.chat_id):
+        update.effective_message.reply_text('This command is restricted for admin users only')
+    else:
+        msg = _dump_db_data()
+        context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=_dump_db_data())
+
+
 # NOTE(ivasilev) Shamelessly borrowed from
 # https://github.com/python-telegram-bot/python-telegram-bot/blob/master/examples/errorhandlerbot.py
 def error_handler(update: object, context: CallbackContext) -> None:
@@ -216,6 +229,7 @@ def run():
     updater.dispatcher.add_handler(CommandHandler('adminbroadcast', admin_broadcast))
     updater.dispatcher.add_handler(CommandHandler('adminpause', admin_pause))
     updater.dispatcher.add_handler(CommandHandler('adminresume', admin_resume))
+    updater.dispatcher.add_handler(CommandHandler('adminstatus', admin_status))
     updater.dispatcher.add_error_handler(error_handler)
     updater.job_queue.run_repeating(inform_about_change, interval=UPDATE_INTERVAL, first=0)
     updater.start_polling()
