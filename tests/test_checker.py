@@ -29,6 +29,7 @@ Tábor :(
 Volyně :(
 Zlín :("""
 LAST_FETCHED = 'tests/data/last_fetched.html'
+LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hradec Kralove', 'Jindrichuv Hradec',
           'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Marianske Lazne', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
           'Praha', 'Prerov', 'Tabor', 'Usti nad Labem', 'Volyne', 'Zlin']
@@ -46,11 +47,11 @@ def test_parse_main_page(main_page_html):
 
 def test_parse_city_page(city_page_html):
     parsed = a2exams_checker._html_to_exam_slots(city_page_html)
-    assert parsed['total'] == 7
+    assert parsed['total'] == 60
     assert parsed['details'] == [
-            ('26.02.2022, od 09:00', 0), ('09.03.2022, od 09:00', 2), ('26.03.2022, od 09:00', 5),
-            ('06.04.2022, od 09:00', 0), ('23.04.2022, od 09:00', 0), ('11.05.2022, od 09:00', 0),
-            ('08.06.2022, od 09:00', 0), ('25.06.2022, od 09:00', 0)]
+            ('26.02.2022, od 09:00', 0), ('09.03.2022, od 09:00', 15),
+            ('26.03.2022, od 09:00', 0), ('06.04.2022, od 09:00', 15), ('23.04.2022, od 09:00', 0),
+            ('11.05.2022, od 09:00', 15), ('28.05.2022, od 09:00', 0), ('08.06.2022, od 09:00', 15)]
 
 
 def test_get_urls(main_page_html):
@@ -61,7 +62,7 @@ def test_get_urls(main_page_html):
 
 def test_add_total_slots_column():
     old_data = "1643015225.059401,False,Břeclav\n1643015225.059401,False,Hodonín\n"
-    new_data = "24/01/2022 10:07:05,False,Břeclav,0\n24/01/2022 10:07:05,False,Hodonín,0\n"
+    new_data = "2022-01-24 10:07:05,False,Břeclav,0\n2022-01-24 10:07:05,False,Hodonín,0\n"
 
     old_out = tempfile.NamedTemporaryFile()
     with open(old_out.name, 'w') as f:
@@ -73,14 +74,14 @@ def test_add_total_slots_column():
 
 
 def test_get_schools():
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     assert schools_data.keys() == set(CITIES)
     # check that filtering works
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED, cities_filter=['Praha'])
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON, cities_filter=['Praha'])
     assert len(schools_data) == 1
     assert 'Praha' in schools_data
     # try passing bad city in cities_filter
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED, cities_filter=['Brno', 'nosuchcity'])
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON, cities_filter=['Brno', 'nosuchcity'])
     assert len(schools_data) == 1
     assert 'Brno' in schools_data
 
@@ -93,7 +94,7 @@ def _assert_matches(actual, expected):
 
 def test_diff_to_str_no_prev_state():
     # Test scenario 1 - no old_data passed. This should just print current status, nothing to compare to.
-    new_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    new_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     msg = a2exams_checker.diff_to_str(new_data)
     _assert_matches(msg, LAST_FETCHED_STATUS)
     # Check that passing empty old_data doesn't break anything
@@ -110,13 +111,13 @@ def test_diff_to_str_no_prev_state():
     new_data_free_slots = copy.deepcopy(new_data)
     new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
     msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['Praha'])
-    expected = 'Praha :) (42 slots)'
+    expected = 'Praha :) 42 slots'
     _assert_matches(msg, expected)
 
 
 def test_diff_to_str_prev_state():
     # Test scenario 2 - old_data is passed. This should print a diff.
-    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     new_data = copy.deepcopy(old_data)
     # Check that no changes results in empty message
     msg = a2exams_checker.diff_to_str(new_data, new_data)
@@ -147,7 +148,7 @@ def test_diff_to_str_prev_state():
 
 def test_diff_to_str_bad_fetch():
     # Cornercase (also investigation of Issue #4) - bad html returned
-    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     bad_fetched = tempfile.NamedTemporaryFile()
     new_data = a2exams_checker.get_schools_from_file(bad_fetched.name)
     msg = a2exams_checker.diff_to_str(new_data, old_data, cities=['Tabor', 'Praha'])

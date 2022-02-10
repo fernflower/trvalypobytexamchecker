@@ -4,7 +4,7 @@ from checker import a2exams_checker
 import mock
 
 
-LAST_FETCHED = 'tests/data/last_fetched.html'
+LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 
 
 def test__parse_cities_args():
@@ -20,7 +20,7 @@ def test__parse_cities_args():
 
 
 def test_vet_cities_args():
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     # Request cities with diacrytics should work just like without one
     requested_cities = ['Praha', 'Kolin', 'Plzeň']
     res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)

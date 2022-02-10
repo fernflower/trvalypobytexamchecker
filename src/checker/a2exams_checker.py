@@ -175,7 +175,10 @@ def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='div', cls='town', cit
     if not os.path.isfile(filename):
         return {}
     with open(filename) as f:
-        res = json.loads(f.read())
+        try:
+            res = json.loads(f.read())
+        except json.decoder.JSONDecodeError:
+            return {}
     if not cities_filter:
         return res
     return {k:v for (k, v) in res.items() if k in cities_filter}

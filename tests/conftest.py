@@ -1,7 +1,7 @@
 import pytest
 
 MAIN_PAGE = 'tests/data/last_fetched.html'
-CITY_PAGE = 'tests/data/Online přihláška A2 – Jazyková zkouška A2.html'
+CITY_PAGE = 'kolin.html'
 
 
 @pytest.fixture()
