@@ -83,7 +83,7 @@ def _html_to_exam_slots(html, tag='div', cls='terminy'):
         skip = 0
         i = 0
         for string in exams_data:
-            # the 5th element is either Obsazeno (no slots) or number of free slots
+            # the 5th element is either Obsazeno (no slots), 'Neni' (k dispozice) or number of free slots
             if skip > 0:
                 skip -= 1
                 continue
@@ -94,13 +94,16 @@ def _html_to_exam_slots(html, tag='div', cls='terminy'):
             # the critical element
             if string == 'Obsazeno':
                 num = 0
+            elif string == 'Není':
+                num = 0
+                skip = 2
             else:
                 try:
                     num = int(string)
                 except ValueError:
                     num = 0
-                # the following 'volnych' 'mist' have to be skipped
-                skip = 2
+                # the following 'volnych' 'mist' 'Vybrat' have to be skipped
+                skip = 3
             # Save the data
             res['details'].append((date, num))
             # reset date and critical elem counter for next slot
@@ -207,14 +210,14 @@ async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED):
     # now fetch additional information for schools with open registration and update schools data
     for city in [c for c in schools_data if schools_data[c]['free_slots']]:
         exam_slots = await fetch_exam_slots(schools_data[city]['url'])
-        schools_data[city]['total'] = exam_slots['total']
+        schools_data[city]['total_slots'] = exam_slots['total']
     return schools_data
 
 
 def _timestamp_to_date(timestamp_str, date_format=DATETIME_FORMAT):
     try:
         return datetime.datetime.fromtimestamp(float(timestamp_str)).strftime(date_format)
-    except TypeError:
+    except (ValueError, TypeError):
         return None
 
 
@@ -230,15 +233,15 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     for city in cities:
         city_czech_name = new_data[city]['city_name']
         date = timestamp_to_str(new_data[city]['timestamp'])
+        exam_slots_msg = '' if not new_data[city]['total_slots'] else f' ({new_data[city]["total_slots"]} slots)'
         if not old_data:
-            exam_slots_msg = '' if not new_data[city]['total_slots'] else f' ({new_data[city]["total_slots"]} slots)'
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
                  f'{city_czech_name} :){exam_slots_msg}')
         elif old_data and old_data[city]['free_slots'] != new_data[city]['free_slots']:
             m = (f'{city_czech_name} :('
                  if not new_data[city]['free_slots'] else
-                 f'{city_czech_name} :)')
+                 f'{city_czech_name} :){exam_slots_msg}')
         else:
             # No change
             m = ''
