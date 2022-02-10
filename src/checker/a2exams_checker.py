@@ -2,14 +2,15 @@ import argparse
 import asyncio
 import csv
 import datetime
+import json
 import logging
 import os
-import pytz
 import random
 import sys
 import time
 
 from bs4 import BeautifulSoup
+import pytz
 import requests
 import unidecode
 
@@ -21,6 +22,7 @@ TZ = 'Europe/Prague'
 OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
+LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 
@@ -166,30 +168,38 @@ async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL):
     return res
 
 
-def get_schools_from_file(filename=LAST_FETCHED, tag='div', cls='town', cities_filter=None):
+def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='div', cls='town', cities_filter=None):
     """
     Read last saved html and load exams registration data. No fetching here, just give what was saved last.
     """
     if not os.path.isfile(filename):
         return {}
     with open(filename) as f:
-        html = f.read()
-    res = _html_to_schools(html, tag, cls)
+        res = json.loads(f.read())
     if not cities_filter:
         return res
     return {k:v for (k, v) in res.items() if k in cities_filter}
 
 
-async def fetch_schools(url=URL, filename=LAST_FETCHED, tag='div', cls='town'):
+def _dump_schools_to_file(filename, schools):
+    # Save last fetched to filename_json
+    if filename:
+        with open(filename, 'w') as f:
+            f.write(json.dumps(schools))
+
+
+async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='div', cls='town'):
     """
     Fetch recent data, update last saved html and return the exams registration data.
     """
     logger.debug(f'Trying to fetch {url}..')
     start = time.time()
     html = await fetch(url, filename=filename)
+    res = _html_to_schools(html, tag=tag, cls=cls)
     end = time.time()
     logger.debug(f'Fetched successfully in {end - start} seconds.')
-    return _html_to_schools(html, tag=tag, cls=cls)
+    _dump_schools_to_file(filename_json, res)
+    return res
 
 
 def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
@@ -205,12 +215,13 @@ async def fetch_exam_slots(url, tag='div', cls='terminy'):
     return _html_to_exam_slots(html, tag=tag, cls=cls)
 
 
-async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED):
+async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
     schools_data = await fetch_schools(url, filename)
     # now fetch additional information for schools with open registration and update schools data
     for city in [c for c in schools_data if schools_data[c]['free_slots']]:
         exam_slots = await fetch_exam_slots(schools_data[city]['url'])
         schools_data[city]['total_slots'] = exam_slots['total']
+    _dump_schools_to_file(filename_json, schools_data)
     return schools_data
 
 
@@ -233,7 +244,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     for city in cities:
         city_czech_name = new_data[city]['city_name']
         date = timestamp_to_str(new_data[city]['timestamp'])
-        exam_slots_msg = '' if not new_data[city]['total_slots'] else f' ({new_data[city]["total_slots"]} slots)'
+        exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
         if not old_data:
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
