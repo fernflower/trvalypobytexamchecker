@@ -277,11 +277,11 @@ def _apply_changes_to_csv(filename=CSV_FILENAME):
         return
     updated_rows = []
     with open(filename) as csvfile:
-        reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city'])
+        reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city', 'total_slots'])
         for row in reader:
-            # if there are 4 values already - nothing more to do, already updated
-            if len(row) < 4:
-                row.update({'total_slots': 0})
+            if not row['total_slots']:
+                # substitute empty string for 0
+                row['total_slots'] = 0
             if _timestamp_to_date(row['timestamp']):
                 row.update({'timestamp': _timestamp_to_date(row['timestamp'], DATE_FORMAT_GRAFANA)})
             updated_rows.append(row)
