@@ -10,7 +10,6 @@ import traceback
 import redis
 import telegram
 from telegram import ParseMode, Update
-from telegram.error import TelegramError
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
@@ -200,7 +199,6 @@ def admin_status(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
         update.effective_message.reply_text('This command is restricted for admin users only')
     else:
-        msg = _dump_db_data()
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=_dump_db_data())
 
 
