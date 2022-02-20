@@ -205,14 +205,6 @@ async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCH
     return res
 
 
-def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
-    """Convert timestamp to a human-readable format"""
-    try:
-        return datetime.datetime.fromtimestamp(timestamp).strftime(dt_format)
-    except TypeError:
-        return ''
-
-
 async def fetch_exam_slots(url, tag='div', cls='terminy'):
     html = await fetch(url, retry_interval=5)
     return _html_to_exam_slots(html, tag=tag, cls=cls)
@@ -228,11 +220,12 @@ async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED, filename
     return schools_data
 
 
-def _timestamp_to_date(timestamp_str, date_format=DATETIME_FORMAT):
+def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
+    """Convert timestamp to a human-readable format"""
     try:
-        return datetime.datetime.fromtimestamp(float(timestamp_str)).strftime(date_format)
-    except (ValueError, TypeError):
-        return None
+        return datetime.datetime.fromtimestamp(timestamp).strftime(dt_format)
+    except TypeError:
+        return ''
 
 
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
@@ -282,8 +275,8 @@ def _apply_changes_to_csv(filename=CSV_FILENAME):
             if not row['total_slots']:
                 # substitute empty string for 0
                 row['total_slots'] = 0
-            if _timestamp_to_date(row['timestamp']):
-                row.update({'timestamp': _timestamp_to_date(row['timestamp'], DATE_FORMAT_GRAFANA)})
+            if timestamp_to_str(row['timestamp']):
+                row.update({'timestamp': timestamp_to_str(row['timestamp'], DATE_FORMAT_GRAFANA)})
             updated_rows.append(row)
     # now rewrite original file
     with open(filename, 'w') as csvfile:
@@ -304,7 +297,7 @@ def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
         fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
-            date = _timestamp_to_date(schools[city]['timestamp'])
+            date = timestamp_to_str(schools[city]['timestamp'])
             writer.writerow({'timestamp': date,
                              'free_slots': schools[city]['free_slots'],
                              'city': schools[city]['city_name'],
