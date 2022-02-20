@@ -2,10 +2,12 @@ import argparse
 import asyncio
 import csv
 import datetime
+import logging
 import os
 import pytz
 import random
 import sys
+import time
 
 from bs4 import BeautifulSoup
 import requests
@@ -14,11 +16,17 @@ import unidecode
 
 URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = 15
+POLLING_INTERVAL = os.getenv('POLLING_INTERVAL', 15)
 TZ = 'Europe/Prague'
 OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
+DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
+
+# set up logging
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 async def _do_fetch(url):
@@ -100,7 +108,11 @@ async def fetch_schools(url=URL, filename=LAST_FETCHED, tag='div', cls='town'):
     """
     Fetch recent data, update last saved html and return the exams registration data.
     """
+    logger.debug(f'Trying to fetch {url}..')
+    start = time.time()
     html = await fetch(url, filename=filename)
+    end = time.time()
+    logger.debug(f'Fetched successfully in {end - start} seconds.')
     return _html_to_list(html, tag=tag, cls=cls)
 
 
@@ -116,7 +128,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     for city in cities:
         city_czech_name = new_data[city]['city_name']
         date = datetime.datetime.fromtimestamp(
-            new_data[city]['timestamp']).strftime('%d/%m/%Y %H:%M:%S')
+            new_data[city]['timestamp']).strftime(DATETIME_FORMAT)
         if not old_data:
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
@@ -171,9 +183,10 @@ async def main():
         while True:
             await asyncio.sleep(parsed_args.interval)
             new_data = await fetch_schools(url=URL)
-            print(f"Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
+            date = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):
-                print(diff_to_str(new_data, old_data, cities))
+                logger.info(diff_to_str(new_data, old_data, cities))
                 # update data
                 write_csv(new_data, cities, filename=CSV_FILENAME)
                 old_data = new_data

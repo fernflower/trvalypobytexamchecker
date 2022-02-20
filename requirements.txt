@@ -2,6 +2,7 @@
 asyncio
 beautifulsoup4
 lxml
+mock
 requests
 unidecode
 pytest

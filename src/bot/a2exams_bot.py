@@ -10,7 +10,6 @@ import traceback
 import redis
 import telegram
 from telegram import ParseMode, Update
-from telegram.error import TelegramError
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
@@ -47,14 +46,28 @@ def _dump_db_data():
     return '\n'.join([f"{chat_id}: {_get_tracked_cities_str(chat_id)}" for chat_id in chat_ids])
 
 
+def _fetch_from_db(chat_id, as_list=False):
+    val = REDIS.get(chat_id)
+    if val is None:
+        return [] if as_list else None
+    # redis stores byte strings, decode before returning
+    val = val.decode('utf-8')
+    if as_list:
+        val = val.split(',') if val else []
+    return val
+
+
 def _get_tracked_cities(chat_id):
     if REDIS.exists(chat_id):
         # NOTE(ivasilev) redis stores bytes, need to explicitly call decode to get strings
-        return [c for c in REDIS.get(chat_id).decode('utf-8').split(',') if c.strip()]
+        return [c for c in _fetch_from_db(chat_id, as_list=True) if c.strip()]
+    return []
 
 
 def _get_tracked_cities_str(chat_id):
-    return REDIS.get(chat_id).decode('utf-8') or "all cities"
+    if REDIS.exists(chat_id):
+        return _fetch_from_db(chat_id) or "all cities"
+    return ''
 
 
 def _set_tracked_cities_str(chat_id, cities_str):
@@ -105,7 +118,7 @@ def track(update: Update, context: CallbackContext) -> None:
 
 
 def notrack(update: Update, context: CallbackContext) -> None:
-    REDIS.delete(update.effective_message.chat_id)
+    _unsubscribe(update.effective_message.chat_id)
     update.effective_message.reply_text(f'You are no longer subscribed for updates')
 
 
@@ -186,7 +199,6 @@ def admin_status(update: Update, context: CallbackContext) -> None:
     if not _is_admin(update.effective_message.chat_id):
         update.effective_message.reply_text('This command is restricted for admin users only')
     else:
-        msg = _dump_db_data()
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=_dump_db_data())
 
 
