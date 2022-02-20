@@ -116,6 +116,14 @@ async def fetch_schools(url=URL, filename=LAST_FETCHED, tag='div', cls='town'):
     return _html_to_list(html, tag=tag, cls=cls)
 
 
+def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
+    """Convert timestamp to a human-readable format"""
+    try:
+        return datetime.datetime.fromtimestamp(timestamp).strftime(dt_format)
+    except TypeError:
+        return ''
+
+
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
@@ -127,8 +135,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     msg = ''
     for city in cities:
         city_czech_name = new_data[city]['city_name']
-        date = datetime.datetime.fromtimestamp(
-            new_data[city]['timestamp']).strftime(DATETIME_FORMAT)
+        date = timestamp_to_str(new_data[city]['timestamp'])
         if not old_data:
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
@@ -183,7 +190,7 @@ async def main():
         while True:
             await asyncio.sleep(parsed_args.interval)
             new_data = await fetch_schools(url=URL)
-            date = datetime.datetime.now().strftime(DATETIME_FORMAT)
+            date = timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))
