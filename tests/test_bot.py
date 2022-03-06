@@ -7,6 +7,18 @@ import mock
 LAST_FETCHED = 'tests/data/last_fetched.html'
 
 
+def test__parse_cities_args():
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    # The multi-whitespaces case
+    context_args = ['plzEn', ',', 'praha', ',', 'ceske', 'budejovice']
+    res, errors = a2exams_bot._parse_cities_args(context_args)
+    assert (res, errors) == (['Ceske Budejovice', 'Plzen', 'Praha'], [])
+    # Make sure that an empty list results in no errors
+    context_args = []
+    res, errors = a2exams_bot._parse_cities_args(context_args)
+    assert (res, errors) == ([], [])
+
+
 def test_vet_cities_args():
     schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
     # Request cities with diacrytics should work just like without one
@@ -22,6 +34,10 @@ def test_vet_cities_args():
     requested_cities = ['pRAHA', 'nosuchcity', 'cityof42']
     res, errors = a2exams_bot._vet_requested_cities(requested_cities)
     assert (res, errors) == (['Praha'], ['Cityof42', 'Nosuchcity'])
+    # If a properly parsed list of cities is passed then 2 words in name are fine
+    requested_cities = ['pRAHA', 'Ceske budejovice']
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    assert (res, errors) == (['Ceske Budejovice', 'Praha'], [])
 
 
 def _mock_redis(values=None):

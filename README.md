@@ -29,14 +29,14 @@ This will run 3 containers - the fetcher, redis and telegram bot. To properly se
 your own `.env` file from the given `.env.sample`.
 
 Available bot commands:
-- /cities - List cities where exam takes place. Can be used as arguments to /track command
+- /cities - List cities where exam takes place. Can be used as arguments to /track command (separator - comma)
 - /track - Subscribe to updates
 - /notrack - Unsubscribe
 - /users - Show how many users are subscribed for updates
 - /mystatus - Check if you are tracking status updates at the moment
 - /check - Check status in all cities right now
 
-Once the user subscribes to the updates using `/track` or `/track praha brno kolin`, the bot will inform them about
+Once the user subscribes to the updates using `/track` or `/track praha, brno, kolin`, the bot will inform them about
 any status change as soon as it happens.
 
 ## To be done
