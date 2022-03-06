@@ -31,7 +31,7 @@ logger.setLevel(logging.DEBUG)
 
 def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     """Returns a tuple (cities_ok, cities_error) """
-    requested_cities = [" ".join(map(lambda d: d.capitalize(), unidecode.unidecode(c).lower().split(' ')))
+    requested_cities = [" ".join(map(lambda d: d.title(), unidecode.unidecode(c).lower().split(' ')))
                         for c in user_requested_cities]
     if requested_cities:
         invalid_options = set(requested_cities) - set(source_of_truth.keys())

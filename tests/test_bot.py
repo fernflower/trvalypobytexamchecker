@@ -38,6 +38,10 @@ def test_vet_cities_args():
     requested_cities = ['pRAHA', 'Ceske budejovice']
     res, errors = a2exams_bot._vet_requested_cities(requested_cities)
     assert (res, errors) == (['Ceske Budejovice', 'Praha'], [])
+    # Allow tracking in Frydek-Mistek as well (previously that was forcefully converted to Frydek-mistek)
+    requested_cities = ['frydek-mistek']
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    assert (res, errors) == (['Frydek-Mistek'], [])
 
 
 def _mock_redis(values=None):
