@@ -31,7 +31,8 @@ logger.setLevel(logging.DEBUG)
 
 def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
     """Returns a tuple (cities_ok, cities_error) """
-    requested_cities = [unidecode.unidecode(c).lower().capitalize() for c in user_requested_cities]
+    requested_cities = [" ".join(map(lambda d: d.title(), unidecode.unidecode(c).lower().split(' ')))
+                        for c in user_requested_cities]
     if requested_cities:
         invalid_options = set(requested_cities) - set(source_of_truth.keys())
         if invalid_options:
@@ -89,8 +90,14 @@ def _is_admin(chat_id):
     return int(chat_id) == int(DEVELOPER_CHAT_ID)
 
 
+def _parse_cities_args(context_args):
+    # NOTE(ivasilev) Stripping whitespaces is necessary for correct parsing of 'Praha   , Brno , Ceske budejovice'
+    preprocessed_args = [city.strip() for city in " ".join(context_args).split(',') if city.strip()]
+    return _vet_requested_cities(preprocessed_args)
+
+
 def check(update: Update, context: CallbackContext) -> None:
-    requested_cities, error_cities = _vet_requested_cities(context.args)
+    requested_cities, error_cities = _parse_cities_args(context.args)
     error_msg = ''
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
@@ -107,7 +114,7 @@ def cities(update: Update, context: CallbackContext) -> None:
 
 def track(update: Update, context: CallbackContext) -> None:
     error_msg = ''
-    requested_cities, error_cities = _vet_requested_cities(context.args)
+    requested_cities, error_cities = _parse_cities_args(context.args)
     cities_str = ','.join(sorted(requested_cities))
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
