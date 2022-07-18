@@ -28,11 +28,10 @@ Tábor :(
 Ústí nad Labem :(
 Volyně :(
 Zlín :("""
-LAST_FETCHED = 'tests/data/last_fetched.html'
 LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hradec Kralove', 'Jindrichuv Hradec',
           'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Marianske Lazne', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
-          'Praha', 'Prerov', 'Tabor', 'Usti nad Labem', 'Volyne', 'Zlin']
+          'Praha', 'Prerov', 'Tabor', 'Usti Nad Labem', 'Volyne', 'Zlin']
 
 
 def test_parse_main_page(main_page_html):

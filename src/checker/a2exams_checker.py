@@ -54,7 +54,7 @@ def _reconstruct_city_name(city_strings, no_diacrytics=True):
     """
     # Town may consist of several words - compensate for that
     not_a_name_num, _ = next(((i, w) for (i, w) in enumerate(city_strings) if w.startswith('(')), (0, None))
-    city = ' '.join(city_strings[0: not_a_name_num])
+    city = ' '.join([s.title() for s in city_strings[0: not_a_name_num]])
     if no_diacrytics:
         city = unidecode.unidecode(city)
     return city, not_a_name_num
@@ -223,8 +223,9 @@ async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED, filename
 def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
     """Convert timestamp to a human-readable format"""
     try:
-        return datetime.datetime.fromtimestamp(timestamp).strftime(dt_format)
-    except TypeError:
+        int_timestamp = int(float(timestamp))
+        return datetime.datetime.fromtimestamp(int_timestamp).strftime(dt_format)
+    except (ValueError, TypeError):
         return ''
 
 
@@ -265,7 +266,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
 
 def _apply_changes_to_csv(filename=CSV_FILENAME):
     # Add 4th total_slots column and change from timestamp to date
-    if not os.path.isfile(CSV_FILENAME):
+    if not os.path.isfile(filename):
         # nothing to do
         return
     updated_rows = []

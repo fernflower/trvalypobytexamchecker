@@ -90,10 +90,10 @@ def _is_admin(chat_id):
     return int(chat_id) == int(DEVELOPER_CHAT_ID)
 
 
-def _parse_cities_args(context_args):
+def _parse_cities_args(context_args, source_of_truth=SCHOOLS_DATA):
     # NOTE(ivasilev) Stripping whitespaces is necessary for correct parsing of 'Praha   , Brno , Ceske budejovice'
     preprocessed_args = [city.strip() for city in " ".join(context_args).split(',') if city.strip()]
-    return _vet_requested_cities(preprocessed_args)
+    return _vet_requested_cities(preprocessed_args, source_of_truth)
 
 
 def check(update: Update, context: CallbackContext) -> None:
