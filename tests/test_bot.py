@@ -4,23 +4,23 @@ from checker import a2exams_checker
 import mock
 
 
-LAST_FETCHED = 'tests/data/last_fetched.html'
+LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 
 
 def test__parse_cities_args():
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     # The multi-whitespaces case
     context_args = ['plzEn', ',', 'praha', ',', 'ceske', 'budejovice']
-    res, errors = a2exams_bot._parse_cities_args(context_args)
+    res, errors = a2exams_bot._parse_cities_args(context_args, schools_data)
     assert (res, errors) == (['Ceske Budejovice', 'Plzen', 'Praha'], [])
     # Make sure that an empty list results in no errors
     context_args = []
-    res, errors = a2exams_bot._parse_cities_args(context_args)
+    res, errors = a2exams_bot._parse_cities_args(context_args, schools_data)
     assert (res, errors) == ([], [])
 
 
 def test_vet_cities_args():
-    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED)
+    schools_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
     # Request cities with diacrytics should work just like without one
     requested_cities = ['Praha', 'Kolin', 'Plzeň']
     res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
@@ -28,20 +28,25 @@ def test_vet_cities_args():
     assert (res, errors) == (['Kolin', 'Plzen', 'Praha'], [])
     # CAPS and small letters are fine as well
     requested_cities = ['pRAHA', 'KoLiN', 'plzeň']
-    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
     assert (res, errors) == (['Kolin', 'Plzen', 'Praha'], [])
     # Bad cities end up in list of errors
     requested_cities = ['pRAHA', 'nosuchcity', 'cityof42']
-    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
     assert (res, errors) == (['Praha'], ['Cityof42', 'Nosuchcity'])
     # If a properly parsed list of cities is passed then 2 words in name are fine
     requested_cities = ['pRAHA', 'Ceske budejovice']
-    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
     assert (res, errors) == (['Ceske Budejovice', 'Praha'], [])
     # Allow tracking in Frydek-Mistek as well (previously that was forcefully converted to Frydek-mistek)
     requested_cities = ['frydek-mistek']
-    res, errors = a2exams_bot._vet_requested_cities(requested_cities)
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
     assert (res, errors) == (['Frydek-Mistek'], [])
+    # Allow tracking in Usti nad Labem (check that in case city name consists of multiple words all of them are
+    # capitalized)
+    requested_cities = ['usti nAD LabeM']
+    res, errors = a2exams_bot._vet_requested_cities(requested_cities, source_of_truth=schools_data)
+    assert (res, errors) == (['Usti Nad Labem'], [])
 
 
 def _mock_redis(values=None):

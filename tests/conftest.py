@@ -1,7 +1,7 @@
 import pytest
 
 MAIN_PAGE = 'tests/data/last_fetched.html'
-CITY_PAGE = 'tests/data/usti_schools.html'
+CITY_PAGE = 'kolin.html'
 
 
 @pytest.fixture()
