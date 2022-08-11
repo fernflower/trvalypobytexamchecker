@@ -242,17 +242,20 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
         city_czech_name = new_data[city]['city_name']
         date = timestamp_to_str(new_data[city]['timestamp'])
         exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
+        # Assume by default there will be nothing to show
+        m = ''
         if not old_data:
             # Just show current state
             m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
                  f'{city_czech_name} :){exam_slots_msg}')
-        elif old_data and old_data[city]['free_slots'] != new_data[city]['free_slots']:
-            m = (f'{city_czech_name} :('
-                 if not new_data[city]['free_slots'] else
-                 f'{city_czech_name} :){exam_slots_msg}')
-        else:
-            # No change
-            m = ''
+        elif old_data:
+            if city not in old_data and new_data[city]['free_slots']:
+                # A new city has appeared overnight and there are free exam slots
+                m = f'{city_czech_name} :){exam_slots_msg}'
+            elif old_data[city]['free_slots'] != new_data[city]['free_slots']:
+                m = (f'{city_czech_name} :('
+                     if not new_data[city]['free_slots'] else
+                     f'{city_czech_name} :){exam_slots_msg}')
         if m:
             msg += f'{m}\n'
     if msg:
@@ -309,8 +312,15 @@ def has_changes(new_data, old_data, chosen_cities=None):
     """
     A (hopefully) useful method to quickly check if the state has changed.
     """
-    cities = chosen_cities or new_data.keys()
-    return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities)
+    chosen_cities = chosen_cities or []
+    cities = [c for c in chosen_cities if c in new_data.keys()] or new_data.keys()
+    # if new cities have appeared -> check if there are any free slots
+    new_cities_appeared = set(cities) - set(old_data.keys())
+    if any(new_data[c]['free_slots'] for c in new_cities_appeared):
+        return True
+    # Filter against new cities and check for changes the usual way
+    cities_to_check = set(cities) & set(old_data.keys())
+    return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
 async def main():
@@ -320,12 +330,13 @@ async def main():
     schools = await fetch_schools_with_exam_slots(url=URL)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
-    cities = [unidecode(c.lower().capitalize()) for c in parsed_args.city or []] or all_cities
+    chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
     try:
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
             new_data = await fetch_schools_with_exam_slots(url=URL)
+            cities = schools.keys() if not chosen_cities else chosen_cities
             date = timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):

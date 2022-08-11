@@ -112,6 +112,16 @@ def test_diff_to_str_no_prev_state():
     msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['Praha'])
     expected = 'Praha :) 42 slots'
     _assert_matches(msg, expected)
+    # Make sure that no exception is raised when list of exam cities changes
+    new_data_free_slots = copy.deepcopy(new_data)
+    new_data_free_slots['A new city'] = {'free_slots': True,
+                                         'total_slots': 4,
+                                         'city_name': 'A new city',
+                                         'timestamp': 42424242}
+    new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
+    msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['A new city', 'Praha'])
+    expected = 'A new city :) 4 slots\nPraha :) 42 slots'
+    _assert_matches(msg, expected)
 
 
 def test_diff_to_str_prev_state():
@@ -143,6 +153,16 @@ def test_diff_to_str_prev_state():
     msg = a2exams_checker.diff_to_str(new_data, old_data, cities=['Tabor', 'Praha'])
     expected_msg = 'Praha :('
     _assert_matches(msg, expected_msg)
+    # Make sure that no exception is raised when list of exam cities changes
+    old_data = copy.deepcopy(new_data)
+    new_data_free_slots = copy.deepcopy(new_data)
+    new_data_free_slots['A new city'] = {'free_slots': True,
+                                         'total_slots': 4,
+                                         'city_name': 'A new city',
+                                         'timestamp': 42424242}
+    msg = a2exams_checker.diff_to_str(new_data_free_slots, old_data)
+    expected = 'A new city :) 4 slots'
+    _assert_matches(msg, expected)
 
 
 def test_diff_to_str_bad_fetch():
@@ -152,3 +172,18 @@ def test_diff_to_str_bad_fetch():
     new_data = a2exams_checker.get_schools_from_file(bad_fetched.name)
     msg = a2exams_checker.diff_to_str(new_data, old_data, cities=['Tabor', 'Praha'])
     assert msg == ''
+
+
+def test_has_changes():
+    # test that new_data with newly added cities doesn't raise exception
+    old_data = a2exams_checker.get_schools_from_file(LAST_FETCHED_JSON)
+    new_data = dict(old_data)
+    new_data.update({'A New City Not Present Before': {'free_slots': True}})
+    assert a2exams_checker.has_changes(new_data, old_data)
+    new_data.update({'A New City Not Present Before': {'free_slots': False}})
+    assert not a2exams_checker.has_changes(new_data, old_data)
+    # test that filtering against a non-existing-city-in-the-data doesn't raise an exception
+    assert not a2exams_checker.has_changes(new_data, old_data, ['nosuchcity'])
+    # test that new_data with a diminished cities list doesn't raise exception
+    new_data.pop('Tabor')
+    assert not a2exams_checker.has_changes(new_data, old_data)

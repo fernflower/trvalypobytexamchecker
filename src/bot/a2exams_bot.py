@@ -44,7 +44,14 @@ def _vet_requested_cities(user_requested_cities, source_of_truth=SCHOOLS_DATA):
 
 def _dump_db_data():
     chat_ids = _get_all_subscribers()
-    return '\n'.join([f"{chat_id}: {_get_tracked_cities_str(chat_id)}" for chat_id in chat_ids])
+    variations = {}
+    for chat_id in chat_ids:
+        cities_tracked = _get_tracked_cities_str(chat_id)
+        try:
+            variations[cities_tracked] += 1
+        except KeyError:
+            variations[cities_tracked] = 1
+    return '\n'.join([f"{var}: {num} users" for var, num in variations.items()])
 
 
 def _fetch_from_db(chat_id, as_list=False):
