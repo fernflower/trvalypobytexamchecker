@@ -4,11 +4,13 @@ requires = [
     "beautifulsoup4",
     "lxml",
     "pytest",
+    "pytz",
     "requests",
     "unidecode",
 
-    "python-telegram-bot",
+    "python-telegram-bot==13.5",
     "redis",
-    "unidecode"
+    "unidecode",
+    "setuptools"
 ]
 build-backend = "setuptools.build_meta"

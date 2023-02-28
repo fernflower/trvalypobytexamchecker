@@ -3,11 +3,12 @@ asyncio
 beautifulsoup4
 lxml
 mock
+pytest
+pytz
 requests
 unidecode
-pytest
 
 # bot
-python-telegram-bot
+python-telegram-bot==13.5
 redis
 unidecode
