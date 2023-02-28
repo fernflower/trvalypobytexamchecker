@@ -3,6 +3,7 @@ requires = [
     "asyncio",
     "beautifulsoup4",
     "lxml",
+    "pysocks",
     "pytest",
     "pytz",
     "requests",

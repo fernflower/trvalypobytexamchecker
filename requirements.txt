@@ -3,6 +3,7 @@ asyncio
 beautifulsoup4
 lxml
 mock
+pysocks
 pytest
 pytz
 requests
