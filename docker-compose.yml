@@ -26,7 +26,7 @@ services:
     command: redis-server --appendonly yes
     volumes:
        - ./storage/redis/data:/data
-  tor-socks-proxy:
+  tor-socks-proxy-local:
     container_name: tor-socks-proxy
     image: peterdavehello/tor-socks-proxy:latest
     ports:
