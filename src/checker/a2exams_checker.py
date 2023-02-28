@@ -25,6 +25,7 @@ LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
+PROXY = os.getenv('PROXY', '127.0.0.1:9150')
 
 # set up logging
 logging.basicConfig()
@@ -34,9 +35,12 @@ logger.setLevel(logging.DEBUG)
 
 async def _do_fetch(url):
     try:
-        resp = requests.get(url, headers={'Cache-Control': 'no-cache',
-                                          'Pragma': 'no-cache',
-                                          'User-agent': 'Mozilla/5.0'})
+        proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5://{PROXY}'}
+        if proxies:
+            logger.info(f"Using proxy {PROXY} for request")
+        resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
+                                                           'Pragma': 'no-cache',
+                                                           'User-agent': 'Mozilla/5.0'})
     except requests.exceptions.ConnectionError:
         return
     if resp.ok:
