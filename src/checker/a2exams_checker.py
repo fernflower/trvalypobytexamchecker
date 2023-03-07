@@ -17,7 +17,7 @@ import unidecode
 
 URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = os.getenv('POLLING_INTERVAL', 15)
+POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 15))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
@@ -151,7 +151,7 @@ def _parse_args(args, cities_choices):
     parser = argparse.ArgumentParser()
     parser.add_argument('--city', help='City to track exams in', choices=cities_choices, action='append')
     parser.add_argument('--interval', help='Interval to poll a website with exams registration',
-                        default=POLLING_INTERVAL)
+                        default=POLLING_INTERVAL, type=int)
     return parser.parse_args(args)
 
 
