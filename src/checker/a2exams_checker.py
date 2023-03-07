@@ -25,7 +25,7 @@ LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
-PROXY = os.getenv('PROXY', 'tor-socks-proxy:9150')
+PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 
 # set up logging
 logging.basicConfig()
