@@ -41,7 +41,10 @@ async def _do_fetch(url):
         resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
                                                            'Pragma': 'no-cache',
                                                            'User-agent': 'Mozilla/5.0'})
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
+        return
+    except Exception as exc:
+        logger.error(f'Some unexpected exception has occured {exc}..')
         return
     if resp.ok:
         return resp.text
