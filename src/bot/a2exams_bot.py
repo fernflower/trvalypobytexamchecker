@@ -110,7 +110,14 @@ def check(update: Update, context: CallbackContext) -> None:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
     msg = a2exams_checker.diff_to_str(schools, url_in_header=True)
-    update.effective_message.reply_text(f'{error_msg}{msg}')
+    response = f'{error_msg}{msg}'
+    if not response:
+        # NOTE(ivasilev) That is a temporary warning message until issue #23 is resolved
+        response = (
+                'Since noon March 27, 2023 recaptcha has been introduced at the exams tracking page, as well as minor'
+                ' layout changes. Checker would need to be adapted to this change, the progress can be tracked in https://github.com/fernflower/trvalypobytexamchecker/issues/23 .'
+                'Estimated time to deliver a fix - by Apr, 3, 2023. Until then no updates will be shown.')
+    update.effective_message.reply_text(response)
 
 
 def cities(update: Update, context: CallbackContext) -> None:
