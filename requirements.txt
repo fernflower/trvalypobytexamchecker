@@ -12,6 +12,7 @@ unidecode
 # headless browser related
 fake-useragent
 selenium
+pyvirtualdisplay
 
 # bot
 python-telegram-bot==13.5

@@ -11,6 +11,7 @@ import time
 
 from bs4 import BeautifulSoup
 import pytz
+from pyvirtualdisplay import Display
 import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -36,6 +37,9 @@ logger.setLevel(logging.DEBUG)
 
 
 async def _do_fetch_with_browser(url, wait_for_javascript=3, attempts=4):
+    display = Display(visible=0, size=(800, 600))
+    display.start()
+    logger.info('Initialized virtual display')
     options = webdriver.firefox.options.Options()
     options.set_preference("intl.accept_languages", 'cs-CZ')
     # set user-agent
@@ -70,6 +74,7 @@ async def _do_fetch_with_browser(url, wait_for_javascript=3, attempts=4):
         return
     finally:
         driver.quit()
+        display.stop()
 
     if not attempts:
         # Nope, maybe will be luckier next time
