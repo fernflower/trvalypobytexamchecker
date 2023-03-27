@@ -9,6 +9,9 @@ pytest-asyncio
 pytz
 requests
 unidecode
+# headless browser related
+fake-useragent
+selenium
 
 # bot
 python-telegram-bot==13.5

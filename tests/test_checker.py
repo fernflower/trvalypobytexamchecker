@@ -21,7 +21,6 @@ Karlovy Vary :(
 Klatovy :(
 Kolín :(
 Liberec :(
-Mariánské Lázně :(
 Olomouc :(
 Ostrava :(
 Písek :(
@@ -29,12 +28,12 @@ Plzeň :(
 Praha :(
 Přerov :(
 Tábor :(
-Ústí nad Labem :(
+Ústí Nad Labem :(
 Volyně :(
 Zlín :("""
 LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hradec Kralove', 'Jindrichuv Hradec',
-          'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Marianske Lazne', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
+          'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
           'Praha', 'Prerov', 'Tabor', 'Usti Nad Labem', 'Volyne', 'Zlin']
 
 

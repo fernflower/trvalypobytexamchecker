@@ -12,12 +12,14 @@ import time
 from bs4 import BeautifulSoup
 import pytz
 import requests
+from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 import unidecode
 
 
 URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 15))
+POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 25))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
@@ -31,6 +33,48 @@ PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+async def _do_fetch_with_browser(url, wait_for_javascript=3, attempts=4):
+    options = webdriver.firefox.options.Options()
+    options.set_preference("intl.accept_languages", 'cs-CZ')
+    # set user-agent
+    # NOTE(ivasilev) Setting useragent with ua.random is a great idea in theory but in practice it leads to
+    # recaptcha warnings as recaptch needs latest version of browsers to run. So let's hardcode it here to
+    # something 100% acceptable and configure fake-useragent with custom data file later
+    # ua = fake_useragent.UserAgent()
+    # useragent = ua.random
+    useragent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0'
+    logger.info("User-Agent for this request will be %s", useragent)
+    options.set_preference('general.useragent.override', useragent)
+    if PROXY not in ('0', 'None', 'no'):
+        ip, port = PROXY.rsplit(':', 1)
+        options.set_preference('network.proxy.type', 1)
+        options.set_preference('network.proxy.socks', ip)
+        options.set_preference('network.proxy.socks_port', int(port))
+    driver = webdriver.Firefox(options=options)
+    # emulate some user actions
+    # driver.maximize_window()
+    try:
+        driver.get(url)
+        # XXX FIXME It makes my eyes bleed, but so far I haven't thought of a nicer way to make sure javascript
+        # code has finished loading current exam slots
+        page_source = driver.page_source
+        while 'Brno' not in page_source and attempts:
+            attempts -= 1
+            logger.info('[Attempts left %d] No exam schedule has been loaded yet, let us wait a bit longer', attempts)
+            await asyncio.sleep(wait_for_javascript)
+            page_source = driver.page_source
+    except WebDriverException as err:
+        logger.error('An error has occured during page loading %s', err)
+        return
+    finally:
+        driver.quit()
+
+    if not attempts:
+        # Nope, maybe will be luckier next time
+        page_source = None
+    return page_source
 
 
 async def _do_fetch(url):
@@ -52,11 +96,12 @@ async def _do_fetch(url):
 
 def _extract_data(html, tag, cls, strings_only=True):
     soup = BeautifulSoup(html, features="lxml")
-    return [e.text.split() if strings_only else e for e in soup.find_all(tag)
-            if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+    all_tags = soup.find_all(tag, {'class': cls})
+    return [t.text.split() if strings_only else t for t in all_tags]
 
 
 def _reconstruct_city_name(city_strings, no_diacrytics=True):
+
     """ Returns a city name and positional number of first word after it
     """
     # Town may consist of several words - compensate for that
@@ -67,13 +112,15 @@ def _reconstruct_city_name(city_strings, no_diacrytics=True):
     return city, not_a_name_num
 
 
-def _html_to_schools_urls(html, tag='div', cls='col-6'):
+def _html_to_schools_urls(html, tag='li', cls=''):
     res = {}
     tags = _extract_data(html, tag, cls, strings_only=False)
     for tag in tags:
-        city_strings = tag.find('div').text.split()
+        city_strings = tag.find('div')
         if not city_strings:
+            # This can happen if some non-town related fields have been matched
             continue
+        city_strings = city_strings.text.split()
         city_name, _ = _reconstruct_city_name(city_strings)
         url = tag.find('a').attrs.get('href')
         # This should filter out occasional non-city matches
@@ -123,7 +170,7 @@ def _html_to_exam_slots(html, tag='div', cls='terminy'):
     return res
 
 
-def _html_to_schools(html, tag='div', cls='town'):
+def _html_to_schools(html, tag='li', cls=''):
     """
     In case layout changes this function only has to be tuned to extract necessary data.
     Returned value is a dict with no-diacrytics-city-name used as keys
@@ -135,7 +182,11 @@ def _html_to_schools(html, tag='div', cls='town'):
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
         city_name, not_a_name_num = _reconstruct_city_name(city_info, no_diacrytics=False)
-        total_schools = int(city_info[not_a_name_num].lstrip('('))
+        try:
+            total_schools = int(city_info[not_a_name_num].lstrip('('))
+        except:
+            # Block with schools has ended, that is some irrelevant data already, skip the rest completely
+            break
         free_slots = city_info[-1] == 'Vybrat'
         status = city_info[-1]
         city_name_no_diacrytics = unidecode.unidecode(city_name)
@@ -158,16 +209,17 @@ def _parse_args(args, cities_choices):
     return parser.parse_args(args)
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL):
+async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
     """
     Fetches recent version of registration website. If request fails for some reason will retry until success.
     Return html and saves it in a file if filename parameter is passed.
     """
-    res = await _do_fetch(url=url)
+    res = await fetch_func(url=url)
     while not res:
-        print(f"Looks like connection error, will try {url} again later")
-        await asyncio.sleep(random.randint(1, retry_interval))
-        res = await _do_fetch(url=url)
+        retry_in = int(retry_interval / 3 + random.randint(1, int(2 * retry_interval / 3)))
+        print(f"Looks like connection error, will try {url} again later in {retry_in}")
+        await asyncio.sleep(retry_in)
+        res = await fetch_func(url=url)
     # record new data
     if filename:
         with open(filename, 'w') as f:
@@ -175,7 +227,7 @@ async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL):
     return res
 
 
-def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='div', cls='town', cities_filter=None):
+def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='li', cls='', cities_filter=None):
     """
     Read last saved html and load exams registration data. No fetching here, just give what was saved last.
     """
@@ -198,7 +250,7 @@ def _dump_schools_to_file(filename, schools):
             f.write(json.dumps(schools))
 
 
-async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='div', cls='town'):
+async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
     """
     Fetch recent data, update last saved html and return the exams registration data.
     """
