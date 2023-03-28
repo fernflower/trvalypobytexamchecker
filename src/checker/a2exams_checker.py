@@ -15,6 +15,8 @@ from pyvirtualdisplay import Display
 import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
 import unidecode
 
 
@@ -36,7 +38,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-async def _do_fetch_with_browser(url, wait_for_javascript=3, attempts=4):
+async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='select-town'):
     display = Display(visible=0, size=(800, 600))
     display.start()
     logger.info('Initialized virtual display')
@@ -48,37 +50,38 @@ async def _do_fetch_with_browser(url, wait_for_javascript=3, attempts=4):
     # something 100% acceptable and configure fake-useragent with custom data file later
     # ua = fake_useragent.UserAgent()
     # useragent = ua.random
-    useragent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0'
+    useragents = [
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36']
+    useragent = useragents[random.randint(0, len(useragents) - 1)]
     logger.info("User-Agent for this request will be %s", useragent)
     options.set_preference('general.useragent.override', useragent)
+    options.set_preference('dom.webdriver.enabled', False)
+    options.set_preference('useAutomationExtension', False)
     if PROXY not in ('0', 'None', 'no'):
         ip, port = PROXY.rsplit(':', 1)
         options.set_preference('network.proxy.type', 1)
         options.set_preference('network.proxy.socks', ip)
         options.set_preference('network.proxy.socks_port', int(port))
     driver = webdriver.Firefox(options=options)
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     # emulate some user actions
-    # driver.maximize_window()
+    driver.maximize_window()
     try:
         driver.get(url)
-        # XXX FIXME It makes my eyes bleed, but so far I haven't thought of a nicer way to make sure javascript
-        # code has finished loading current exam slots
+        await asyncio.sleep(random.randint(0, 4))
+        driver.execute_script('window.scrollTo(0, 700)')
+        wait_for_element = WebDriverWait(driver, wait_for_javascript).until(
+                lambda x: x.find_element(By.ID, wait_for_id))
         page_source = driver.page_source
-        while 'Brno' not in page_source and attempts:
-            attempts -= 1
-            logger.info('[Attempts left %d] No exam schedule has been loaded yet, let us wait a bit longer', attempts)
-            await asyncio.sleep(wait_for_javascript)
-            page_source = driver.page_source
     except WebDriverException as err:
         logger.error('An error has occured during page loading %s', err)
+        driver.delete_all_cookies()
         return
     finally:
         driver.quit()
         display.stop()
 
-    if not attempts:
-        # Nope, maybe will be luckier next time
-        page_source = None
     return page_source
 
 
@@ -198,6 +201,9 @@ def _html_to_schools(html, tag='li', cls=''):
         free_slots = city_info[-1] == 'Vybrat'
         status = city_info[-1]
         city_name_no_diacrytics = unidecode.unidecode(city_name)
+        url = urls_data.get(city_name_no_diacrytics)
+        if not url:
+            logger.warn(f'No url has been found for {city_name} among {urls_data}')
         res[city_name_no_diacrytics] = {'free_slots': free_slots,
                                         # total slots might be updated later after school page is parsed
                                         'total_slots': 0,
@@ -205,7 +211,7 @@ def _html_to_schools(html, tag='li', cls=''):
                                         'status': status,
                                         'city_name': city_name,
                                         'timestamp': timestamp,
-                                        'url': urls_data[city_name_no_diacrytics]}
+                                        'url': url}
     return res
 
 
