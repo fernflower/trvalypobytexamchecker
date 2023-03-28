@@ -127,6 +127,9 @@ def _html_to_schools_urls(html, tag='li', cls=''):
             continue
         city_strings = city_strings.text.split()
         city_name, _ = _reconstruct_city_name(city_strings)
+        if not tag.find('a'):
+            # invalid data, school block should have link to the schools
+            continue
         url = tag.find('a').attrs.get('href')
         # This should filter out occasional non-city matches
         if not url or not city_name:
@@ -387,11 +390,11 @@ def has_changes(new_data, old_data, chosen_cities=None):
     return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
-async def main():
+async def main(fetch_schools_func=fetch_schools):
     # Make sure csv file has total_slots column
     _apply_changes_to_csv(CSV_FILENAME)
     # fetch initial data to set everything up (default choices for cities etc)
-    schools = await fetch_schools_with_exam_slots(url=URL)
+    schools = await fetch_schools_func(url=URL)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
     chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
@@ -399,7 +402,7 @@ async def main():
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
-            new_data = await fetch_schools_with_exam_slots(url=URL)
+            new_data = await fetch_schools_func(url=URL)
             cities = schools.keys() if not chosen_cities else chosen_cities
             date = timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")

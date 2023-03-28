@@ -11,6 +11,7 @@ services:
       - ./output:/code/output
     environment:
       TZ: Europe/Prague
+      POLLING_INTERVAL: 60
     depends_on:
       - tor-socks-proxy-local
   bot:
