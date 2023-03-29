@@ -34,8 +34,8 @@ RUN echo "===> Installing system dependencies..." && \
     pip3 install selenium==3.141.0 pyvirtualdisplay==2.2 && \
     \
     \
-    echo "===> Remove build dependencies..." && \
-    apt-get remove -y $BUILD_DEPS && rm -rf /var/lib/apt/lists/*
+    echo "===> Remove what is not needed anymore..." && \
+    rm -rf /var/lib/apt/lists/*
 
 
 ENV LANG C.UTF-8

@@ -8,6 +8,7 @@ import os
 import random
 import sys
 import time
+import urllib3
 
 from bs4 import BeautifulSoup
 import pytz
@@ -31,6 +32,8 @@ LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
+HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
+HEALTH_THRESHOLD = os.getenv('HEALTH_THRESHOLD', 60)
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -40,6 +43,12 @@ BROWSER = None
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+def get_time_since_last_fetched():
+    last_fetch_time = os.path.getmtime(LAST_FETCHED)
+    current = datetime.datetime.now().timestamp()
+    return current - last_fetch_time
 
 
 def _close_browser():
@@ -435,6 +444,15 @@ async def main(fetch_schools_func=fetch_schools):
                 # update data
                 write_csv(new_data, cities, filename=CSV_FILENAME)
                 old_data = new_data
+            # update health check file
+            if get_time_since_last_fetched() < HEALTH_THRESHOLD:
+                logger.debug('State: healthy')
+                if not os.path.isfile(HEALTH):
+                    with open(HEALTH, 'w') as f:
+                        f.write('alive')
+            else:
+                logger.warn('State: unhealthy, last fetch was > seconds ago', HEALTH_THRESHOLD)
+                os.unlink(HEALTH)
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
 
