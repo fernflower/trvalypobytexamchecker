@@ -32,15 +32,30 @@ DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 
+# globals to reuse for browser page displaying
+DISPLAY = None
+BROWSER = None
+
 # set up logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='select-town'):
-    display = Display(visible=0, size=(800, 600))
-    display.start()
+def _close_browser():
+    if BROWSER:
+        BROWSER.quit()
+    if DISPLAY:
+        DISPLAY.stop()
+
+
+def _get_browser(force=False):
+    global DISPLAY
+    global BROWSER
+    if not force and BROWSER:
+        return BROWSER
+    DISPLAY = Display(visible=0, size=(800, 600))
+    DISPLAY.start()
     logger.info('Initialized virtual display')
     options = webdriver.firefox.options.Options()
     options.set_preference("intl.accept_languages", 'cs-CZ')
@@ -51,7 +66,8 @@ async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='selec
     # ua = fake_useragent.UserAgent()
     # useragent = ua.random
     useragents = [
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
+#            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
+            'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36']
     useragent = useragents[random.randint(0, len(useragents) - 1)]
     logger.info("User-Agent for this request will be %s", useragent)
@@ -63,24 +79,26 @@ async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='selec
         options.set_preference('network.proxy.type', 1)
         options.set_preference('network.proxy.socks', ip)
         options.set_preference('network.proxy.socks_port', int(port))
-    driver = webdriver.Firefox(options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    # emulate some user actions
-    driver.maximize_window()
+    BROWSER = webdriver.Firefox(options=options)
+    BROWSER.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    # emulate some user actions tbd
+    BROWSER.maximize_window()
+    return BROWSER
+
+
+async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='select-town'):
+    browser = _get_browser()
     try:
-        driver.get(url)
+        browser.get(url)
         await asyncio.sleep(random.randint(0, 4))
-        driver.execute_script('window.scrollTo(0, 700)')
-        wait_for_element = WebDriverWait(driver, wait_for_javascript).until(
+        browser.execute_script('window.scrollTo(0, 700)')
+        wait_for_element = WebDriverWait(browser, wait_for_javascript).until(
                 lambda x: x.find_element(By.ID, wait_for_id))
-        page_source = driver.page_source
-    except WebDriverException as err:
+        page_source = browser.page_source
+    except (WebDriverException, urllib3.exceptions.MaxRetryError) as err:
         logger.error('An error has occured during page loading %s', err)
-        driver.delete_all_cookies()
+        _close_browser()
         return
-    finally:
-        driver.quit()
-        display.stop()
 
     return page_source
 
