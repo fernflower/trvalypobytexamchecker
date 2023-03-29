@@ -39,6 +39,20 @@ Available bot commands:
 Once the user subscribes to the updates using `/track` or `/track praha, brno, kolin`, the bot will inform them about
 any status change as soon as it happens.
 
+
+### Separate checker and bot deployment
+
+After March 27, 2023 the layout and fetching mechanism of the exams tracking page have changed. A single curl request and results parsing was no longer enough - the generation of exam slots is now done by javascript code and the web introduced other pretty strict anti-automation measures.
+So now the bare minimum is to have a webpage fetched by a browser, which makes checker container pretty heavy and thus not runnable on a default low-CPU virtual machine. You may need to separate checker and bot deployment and implement a distribution channel for fetched data between the machines.
+
+To run checker only use
+
+`docker-compose -f checker-docker-compose.yml up`
+
+To run bot use
+
+`docker-compose -f bot-docker-compose.yml up`
+
 ## To be done
 
 - [ ] Choices for cities in /track command as ReplyKeyboardMarkup
