@@ -26,6 +26,14 @@ services:
     command: redis-server --appendonly yes
     volumes:
        - ./storage/redis/data:/data
+  tor-socks-proxy-local:
+    image: peterdavehello/tor-socks-proxy:latest
+    ports:
+      - "127.0.0.1:8853:53/udp"
+      - "127.0.0.1:9150:9150/tcp"
+    expose:
+      - 9150
+    restart: unless-stopped
 
 volumes:
   redis-data:

@@ -17,7 +17,7 @@ import unidecode
 
 URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = os.getenv('POLLING_INTERVAL', 15)
+POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 15))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = 'output'
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
@@ -25,6 +25,7 @@ LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
+PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 
 # set up logging
 logging.basicConfig()
@@ -34,10 +35,16 @@ logger.setLevel(logging.DEBUG)
 
 async def _do_fetch(url):
     try:
-        resp = requests.get(url, headers={'Cache-Control': 'no-cache',
-                                          'Pragma': 'no-cache',
-                                          'User-agent': 'Mozilla/5.0'})
-    except requests.exceptions.ConnectionError:
+        proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5h://{PROXY}'}
+        if proxies:
+            logger.info(f"Using proxy {PROXY} for request")
+        resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
+                                                           'Pragma': 'no-cache',
+                                                           'User-agent': 'Mozilla/5.0'})
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
+        return
+    except Exception as exc:
+        logger.error(f'Some unexpected exception has occured {exc}..')
         return
     if resp.ok:
         return resp.text
@@ -147,7 +154,7 @@ def _parse_args(args, cities_choices):
     parser = argparse.ArgumentParser()
     parser.add_argument('--city', help='City to track exams in', choices=cities_choices, action='append')
     parser.add_argument('--interval', help='Interval to poll a website with exams registration',
-                        default=POLLING_INTERVAL)
+                        default=POLLING_INTERVAL, type=int)
     return parser.parse_args(args)
 
 
@@ -349,4 +356,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    result = loop.run_until_complete(main())
+    # asyncio.run(main())

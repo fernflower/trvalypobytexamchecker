@@ -1,7 +1,11 @@
 import copy
 import tempfile
+import unittest
+from unittest import mock
 
+import asyncio
 import pytest
+import requests
 
 from checker import a2exams_checker
 
@@ -187,3 +191,14 @@ def test_has_changes():
     # test that new_data with a diminished cities list doesn't raise exception
     new_data.pop('Tabor')
     assert not a2exams_checker.has_changes(new_data, old_data)
+
+
+@pytest.mark.asyncio
+@mock.patch('requests.get', new_callable=unittest.mock.Mock)
+async def test_exception_during_fetch(requests_get_mock):
+    # Emulate situation when an exception occurs somewhere in requests (Issue #22)
+    for exc in [requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
+                Exception('Something has gone seveeeeeerely wrong')]:
+        requests_get_mock.side_effect = Exception('Something has gone seveeeeerely wrong')
+        r = await a2exams_checker._do_fetch('No such url')
+        assert not r

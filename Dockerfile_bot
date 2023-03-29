@@ -3,8 +3,8 @@ ENV TELEGRAM_BOT_TOKEN="42:42"
 WORKDIR /code
 RUN apk add --no-cache gcc musl-dev linux-headers tzdata
 COPY requirements.txt requirements.txt
-COPY . .
-RUN pip install .
-# XXX FIXME Figure out why the previous step doesn't install all dependencies
 RUN pip install -r requirements.txt
+COPY . .
+# XXX FIXME Figure out why the previous step doesn't install all dependencies
+RUN pip install .
 CMD ["python", "src/bot/a2exams_bot.py"]
