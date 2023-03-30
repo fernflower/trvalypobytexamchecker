@@ -34,6 +34,7 @@ DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
 HEALTH_THRESHOLD = os.getenv('HEALTH_THRESHOLD', 60)
+PAGE_LOAD_LIMIT_SECONDS = 20
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -52,10 +53,14 @@ def get_time_since_last_fetched():
 
 
 def _close_browser():
+    global BROWSER
+    global DISPLAY
     if BROWSER:
         BROWSER.quit()
+        BROWSER = None
     if DISPLAY:
         DISPLAY.stop()
+        DISPLAY = None
 
 
 def _get_browser(force=False):
@@ -63,7 +68,7 @@ def _get_browser(force=False):
     global BROWSER
     if not force and BROWSER:
         return BROWSER
-    DISPLAY = Display(visible=0, size=(800, 600))
+    DISPLAY = Display(visible=0, size=(1420, 1080))
     DISPLAY.start()
     logger.info('Initialized virtual display')
     options = webdriver.firefox.options.Options()
@@ -75,7 +80,7 @@ def _get_browser(force=False):
     # ua = fake_useragent.UserAgent()
     # useragent = ua.random
     useragents = [
-#            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
             'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36']
     useragent = useragents[random.randint(0, len(useragents) - 1)]
@@ -84,23 +89,26 @@ def _get_browser(force=False):
     options.set_preference('dom.webdriver.enabled', False)
     options.set_preference('useAutomationExtension', False)
     if PROXY not in ('0', 'None', 'no'):
+        logger.info('Setting up browser proxy %s', PROXY)
         ip, port = PROXY.rsplit(':', 1)
         options.set_preference('network.proxy.type', 1)
         options.set_preference('network.proxy.socks', ip)
         options.set_preference('network.proxy.socks_port', int(port))
+        options.set_preference('network.proxy.socks_remote_dns', True)
     BROWSER = webdriver.Firefox(options=options)
     BROWSER.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     # emulate some user actions tbd
-    BROWSER.maximize_window()
+    # BROWSER.maximize_window()
     return BROWSER
 
 
-async def _do_fetch_with_browser(url, wait_for_javascript=10, wait_for_id='select-town'):
+async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECONDS, wait_for_id='select-town'):
     browser = _get_browser()
     try:
         browser.get(url)
         await asyncio.sleep(random.randint(0, 4))
-        browser.execute_script('window.scrollTo(0, 700)')
+        scroll_to = random.randint(400, 700)
+        browser.execute_script(f'window.scrollTo(0, {scroll_to})')
         wait_for_element = WebDriverWait(browser, wait_for_javascript).until(
                 lambda x: x.find_element(By.ID, wait_for_id))
         page_source = browser.page_source
@@ -426,6 +434,9 @@ def has_changes(new_data, old_data, chosen_cities=None):
 async def main(fetch_schools_func=fetch_schools):
     # Make sure csv file has total_slots column
     _apply_changes_to_csv(CSV_FILENAME)
+    # clear healthcheck state if it's present from previous runs
+    if os.path.isfile(HEALTH):
+        os.unlink(HEALTH)
     # fetch initial data to set everything up (default choices for cities etc)
     schools = await fetch_schools_func(url=URL)
     all_cities = sorted(schools.keys())
