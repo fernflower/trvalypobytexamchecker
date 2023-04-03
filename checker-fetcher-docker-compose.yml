@@ -1,0 +1,30 @@
+version: "3.7"
+services:
+  fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile_fetcher
+    ports:
+      - 4000:4000
+    privileged: true
+    volumes:
+      - ./output:/code/output
+    environment:
+      OUTPUT: output
+      POLLING_INTERVAL: 60
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /code/output/healthy"]
+      interval: 120s
+      timeout: 10s
+      retries: 5
+  checker:
+    build:
+      context: .
+      dockerfile: Dockerfile_checker
+    volumes:
+      - ./output:/code/output
+    environment:
+      TZ: Europe/Prague
+      POLLING_INTERVAL: 50
+      OUTPUT: output

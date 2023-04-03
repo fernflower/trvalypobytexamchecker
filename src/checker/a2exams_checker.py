@@ -5,136 +5,29 @@ import datetime
 import json
 import logging
 import os
-import random
 import sys
-import time
-import urllib3
 
 from bs4 import BeautifulSoup
 import pytz
-from pyvirtualdisplay import Display
-import requests
-from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
 import unidecode
 
 
-URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
+BASEURL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 25))
+POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 TZ = 'Europe/Prague'
-OUTPUT_DIR = 'output'
+OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
+# XXX Later this will be fetched from a centralized repo
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
-PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
-HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
-HEALTH_THRESHOLD = os.getenv('HEALTH_THRESHOLD', 60)
-PAGE_LOAD_LIMIT_SECONDS = 20
-
-# globals to reuse for browser page displaying
-DISPLAY = None
-BROWSER = None
 
 # set up logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def get_time_since_last_fetched():
-    last_fetch_time = os.path.getmtime(LAST_FETCHED)
-    current = datetime.datetime.now().timestamp()
-    return current - last_fetch_time
-
-
-def _close_browser():
-    global BROWSER
-    global DISPLAY
-    if BROWSER:
-        BROWSER.quit()
-        BROWSER = None
-    if DISPLAY:
-        DISPLAY.stop()
-        DISPLAY = None
-
-
-def _get_browser(force=False):
-    global DISPLAY
-    global BROWSER
-    if not force and BROWSER:
-        return BROWSER
-    DISPLAY = Display(visible=0, size=(1420, 1080))
-    DISPLAY.start()
-    logger.info('Initialized virtual display')
-    options = webdriver.firefox.options.Options()
-    options.set_preference("intl.accept_languages", 'cs-CZ')
-    # set user-agent
-    # NOTE(ivasilev) Setting useragent with ua.random is a great idea in theory but in practice it leads to
-    # recaptcha warnings as recaptch needs latest version of browsers to run. So let's hardcode it here to
-    # something 100% acceptable and configure fake-useragent with custom data file later
-    # ua = fake_useragent.UserAgent()
-    # useragent = ua.random
-    useragents = [
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
-            'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36']
-    useragent = useragents[random.randint(0, len(useragents) - 1)]
-    logger.info("User-Agent for this request will be %s", useragent)
-    options.set_preference('general.useragent.override', useragent)
-    options.set_preference('dom.webdriver.enabled', False)
-    options.set_preference('useAutomationExtension', False)
-    if PROXY not in ('0', 'None', 'no'):
-        logger.info('Setting up browser proxy %s', PROXY)
-        ip, port = PROXY.rsplit(':', 1)
-        options.set_preference('network.proxy.type', 1)
-        options.set_preference('network.proxy.socks', ip)
-        options.set_preference('network.proxy.socks_port', int(port))
-        options.set_preference('network.proxy.socks_remote_dns', True)
-    BROWSER = webdriver.Firefox(options=options)
-    BROWSER.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    # emulate some user actions tbd
-    # BROWSER.maximize_window()
-    return BROWSER
-
-
-async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECONDS, wait_for_id='select-town'):
-    browser = _get_browser()
-    try:
-        browser.get(url)
-        await asyncio.sleep(random.randint(0, 4))
-        scroll_to = random.randint(400, 700)
-        browser.execute_script(f'window.scrollTo(0, {scroll_to})')
-        wait_for_element = WebDriverWait(browser, wait_for_javascript).until(
-                lambda x: x.find_element(By.ID, wait_for_id))
-        page_source = browser.page_source
-    except (WebDriverException, urllib3.exceptions.MaxRetryError) as err:
-        logger.error('An error has occured during page loading %s', err)
-        _close_browser()
-        return
-
-    return page_source
-
-
-async def _do_fetch(url):
-    try:
-        proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5h://{PROXY}'}
-        if proxies:
-            logger.info(f"Using proxy {PROXY} for request")
-        resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
-                                                           'Pragma': 'no-cache',
-                                                           'User-agent': 'Mozilla/5.0'})
-    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
-        return
-    except Exception as exc:
-        logger.error(f'Some unexpected exception has occured {exc}..')
-        return
-    if resp.ok:
-        return resp.text
 
 
 def _extract_data(html, tag, cls, strings_only=True):
@@ -155,7 +48,7 @@ def _reconstruct_city_name(city_strings, no_diacrytics=True):
     return city, not_a_name_num
 
 
-def _html_to_schools_urls(html, tag='li', cls=''):
+def _html_to_schools_urls(html, tag='li', cls='', baseurl=BASEURL):
     res = {}
     tags = _extract_data(html, tag, cls, strings_only=False)
     for tag in tags:
@@ -172,7 +65,7 @@ def _html_to_schools_urls(html, tag='li', cls=''):
         # This should filter out occasional non-city matches
         if not url or not city_name:
             continue
-        res[city_name] = f'{URL}{url}'
+        res[city_name] = f'{baseurl}{url}'
     return res
 
 
@@ -258,24 +151,6 @@ def _parse_args(args, cities_choices):
     return parser.parse_args(args)
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
-    """
-    Fetches recent version of registration website. If request fails for some reason will retry until success.
-    Return html and saves it in a file if filename parameter is passed.
-    """
-    res = await fetch_func(url=url)
-    while not res:
-        retry_in = int(retry_interval / 3 + random.randint(1, int(2 * retry_interval / 3)))
-        print(f"Looks like connection error, will try {url} again later in {retry_in}")
-        await asyncio.sleep(retry_in)
-        res = await fetch_func(url=url)
-    # record new data
-    if filename:
-        with open(filename, 'w') as f:
-            f.write(res)
-    return res
-
-
 def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='li', cls='', cities_filter=None):
     """
     Read last saved html and load exams registration data. No fetching here, just give what was saved last.
@@ -299,27 +174,28 @@ def _dump_schools_to_file(filename, schools):
             f.write(json.dumps(schools))
 
 
-async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
+def html_to_schools(html_file=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
     """
-    Fetch recent data, update last saved html and return the exams registration data.
+    Generate last_fetched.json from html data, save it locally and return exams registration data.
     """
-    logger.debug(f'Trying to fetch {url}..')
-    start = time.time()
-    html = await fetch(url, filename=filename)
+    with open(html_file) as f:
+        html = f.read()
     res = _html_to_schools(html, tag=tag, cls=cls)
-    end = time.time()
-    logger.debug(f'Fetched successfully in {end - start} seconds.')
     _dump_schools_to_file(filename_json, res)
     return res
 
 
 async def fetch_exam_slots(url, tag='div', cls='terminy'):
+    # NOTE(ivasilev) This will need to be split between fetcher and checker.
+    # Currently this functionality is not supported
     html = await fetch(url, retry_interval=5)
     return _html_to_exam_slots(html, tag=tag, cls=cls)
 
 
-async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
-    schools_data = await fetch_schools(url, filename)
+async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
+    # NOTE(ivasilev) This will need to be split between fetcher and checker.
+    # Currently this functionality is not supported
+    schools_data = _html_to_schools(html)
     # now fetch additional information for schools with open registration and update schools data
     for city in [c for c in schools_data if schools_data[c]['free_slots']]:
         exam_slots = await fetch_exam_slots(schools_data[city]['url'])
@@ -431,14 +307,16 @@ def has_changes(new_data, old_data, chosen_cities=None):
     return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
-async def main(fetch_schools_func=fetch_schools):
+async def main():
+    """The infinite loop of check html -> process it -> wait -> check html ..."""
     # Make sure csv file has total_slots column
     _apply_changes_to_csv(CSV_FILENAME)
-    # clear healthcheck state if it's present from previous runs
-    if os.path.isfile(HEALTH):
-        os.unlink(HEALTH)
     # fetch initial data to set everything up (default choices for cities etc)
-    schools = await fetch_schools_func(url=URL)
+    while not os.path.isfile(LAST_FETCHED):
+        # No file with data, let's wait a bit
+        logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
+        await asyncio.sleep(POLLING_INTERVAL)
+    schools = html_to_schools(LAST_FETCHED)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
     chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
@@ -446,7 +324,8 @@ async def main(fetch_schools_func=fetch_schools):
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
-            new_data = await fetch_schools_func(url=URL)
+            # See if html has been updated
+            new_data = html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
             date = timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
@@ -455,15 +334,6 @@ async def main(fetch_schools_func=fetch_schools):
                 # update data
                 write_csv(new_data, cities, filename=CSV_FILENAME)
                 old_data = new_data
-            # update health check file
-            if get_time_since_last_fetched() < HEALTH_THRESHOLD:
-                logger.debug('State: healthy')
-                if not os.path.isfile(HEALTH):
-                    with open(HEALTH, 'w') as f:
-                        f.write('alive')
-            else:
-                logger.warn('State: unhealthy, last fetch was > seconds ago', HEALTH_THRESHOLD)
-                os.unlink(HEALTH)
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
 
