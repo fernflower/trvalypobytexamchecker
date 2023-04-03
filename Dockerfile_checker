@@ -1,55 +1,7 @@
-# inspired by https://github.com/dimmg/dockselpy/
-
-FROM ubuntu:focal
-
-ARG DEBIAN_FRONTEND=noninteractive
-RUN echo "===> Installing system dependencies..." && \
-    BUILD_DEPS="curl unzip" && \
-    apt-get update && apt-get install --no-install-recommends -y \
-    python3 python3-pip wget \
-    fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 \
-    libnspr4 libnss3 lsb-release xdg-utils libxss1 libdbus-glib-1-2 libgbm1 \
-    # https://stackoverflow.com/questions/67090130/webdriverexception-process-unexpectedly-closed-with-status-255-selenium-ge
-    bzip2 libxtst6 libgtk-3-0 libx11-xcb-dev libxt6 libpci-dev \
-    $BUILD_DEPS \
-    xvfb && \
-    \
-    \
-    echo "===> Installing geckodriver and firefox..." && \
-    GECKODRIVER_VERSION=v0.32.2 && \
-    wget https://github.com/mozilla/geckodriver/releases/download/$GECKODRIVER_VERSION/geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz && \
-    tar -zxf geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz -C /usr/local/bin && \
-    chmod +x /usr/local/bin/geckodriver && \
-    rm geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz && \
-    \
-    FIREFOX_SETUP=firefox-setup.tar.bz2 && \
-    apt-get purge firefox && \
-    wget -O $FIREFOX_SETUP "https://download.mozilla.org/?product=firefox-latest&os=linux64" && \
-    tar xjf $FIREFOX_SETUP -C /opt/ && \
-    ln -s /opt/firefox/firefox /usr/bin/firefox && \
-    rm $FIREFOX_SETUP && \
-    \
-    \
-    echo "===> Installing python dependencies..." && \
-    pip3 install selenium==3.141.0 pyvirtualdisplay==2.2 && \
-    \
-    \
-    echo "===> Remove what is not needed anymore..." && \
-    rm -rf /var/lib/apt/lists/*
-
-
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
-ENV PYTHONUNBUFFERED=1
-
-ENV APP_HOME /code
-WORKDIR /$APP_HOME
-
-COPY . $APP_HOME/
-
-CMD tail -f /dev/null
-
+FROM python:3.7-alpine
+WORKDIR /code
+RUN apk add --no-cache gcc musl-dev linux-headers tzdata curl
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 COPY . .
-CMD ["python3", "src/checker/a2exams_checker.py"]
+CMD ["python", "src/checker/a2exams_checker.py"]
