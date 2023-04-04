@@ -30,8 +30,8 @@ URL = os.getenv('URL', 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-pr
 # interval to wait before repeating the request
 POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 # These will be used to push data to the centralized storage
-POST_URL = os.getenv('POST_URL')
-POST_TOKEN = os.getenv('POST_TOKEN')
+URL_POST = os.getenv('URL_POST')
+TOKEN_POST = os.getenv('TOKEN_POST')
 # Since Apr 1, 2023 connecting via proxy doesn't really work, but let's keep it here just in case
 PROXY = os.getenv('PROXY', 'no')
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
@@ -174,7 +174,7 @@ def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
         return ''
 
 
-def post(html, url=POST_URL, token=POST_TOKEN):
+def post(html, url=URL_POST, token=TOKEN_POST):
     if not url or not token:
         logger.warn("Both url and token have to be set, no data will be pushed!")
         return
@@ -217,7 +217,8 @@ async def main(fetch_func=_do_fetch_with_browser, retry=POLLING_INTERVAL):
             new_data = await fetch(url=URL, filename=LAST_FETCHED)
             if new_data:
                 # push new data to the centralized portal
-                post(new_data, url=POST_URL, token=POST_TOKEN)
+                logger.info('New data has been successfully fetched')
+                post(new_data, url=URL_POST, token=TOKEN_POST)
             # update health check file
             if get_time_since_last_fetched() < HEALTH_THRESHOLD:
                 logger.debug('State: healthy')
