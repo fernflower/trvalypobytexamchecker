@@ -13,9 +13,7 @@ services:
       OUTPUT: output
       POLLING_INTERVAL: 60
       TOKEN_POST: "$TOKEN_POST"
-      # this will be changed once repository endpoint is deployed
-      # URL_POST: "http://172.17.0.1:7777/trvaly-pobyt/a2/online-prihlaska"
-      URL_POST: "http://localhost:8080/trvaly-pobyt/a2/online-prihlaska"
+      URL_POST: "http://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "test -f /code/output/healthy"]

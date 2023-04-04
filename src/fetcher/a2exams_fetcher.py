@@ -219,6 +219,8 @@ async def main(fetch_func=_do_fetch_with_browser, retry=POLLING_INTERVAL):
                 # push new data to the centralized portal
                 logger.info('New data has been successfully fetched')
                 post(new_data, url=URL_POST, token=TOKEN_POST)
+            else:
+                logger.warn('No new data has been fetched! Will retry later')
             # update health check file
             if get_time_since_last_fetched() < HEALTH_THRESHOLD:
                 logger.debug('State: healthy')
