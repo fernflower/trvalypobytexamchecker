@@ -247,7 +247,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
         msg = f'Update from {date}:\n{msg}'
         # If requested - add url
         if url_in_header:
-            msg = f'{URL}\n{msg}'
+            msg = f'{BASEURL}\n{msg}'
     return msg
 
 

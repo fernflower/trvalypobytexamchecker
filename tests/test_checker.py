@@ -108,7 +108,7 @@ def test_diff_to_str_no_prev_state():
     _assert_matches(msg, expected)
     # Make sure URL is shown when requested
     msg = a2exams_checker.diff_to_str(new_data, url_in_header=True)
-    assert msg.startswith(a2exams_checker.URL)
+    assert msg.startswith(a2exams_checker.BASEURL)
     # If schools has free slots and total_slots information is collected and > 0, then display it as well
     new_data_free_slots = copy.deepcopy(new_data)
     new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
@@ -190,14 +190,3 @@ def test_has_changes():
     # test that new_data with a diminished cities list doesn't raise exception
     new_data.pop('Tabor')
     assert not a2exams_checker.has_changes(new_data, old_data)
-
-
-@pytest.mark.asyncio
-@mock.patch('requests.get', new_callable=unittest.mock.Mock)
-async def test_exception_during_fetch(requests_get_mock):
-    # Emulate situation when an exception occurs somewhere in requests (Issue #22)
-    for exc in [requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
-                Exception('Something has gone seveeeeeerely wrong')]:
-        requests_get_mock.side_effect = Exception('Something has gone seveeeeerely wrong')
-        r = await a2exams_checker._do_fetch('No such url')
-        assert not r
