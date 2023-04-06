@@ -15,6 +15,7 @@ import logging
 import os
 import random
 import sys
+import urllib
 import urllib3
 
 from pyvirtualdisplay import Display
@@ -174,7 +175,7 @@ def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
         return ''
 
 
-def post(html, url=URL_POST, token=TOKEN_POST):
+def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL):
     if not url or not token:
         logger.warn("Both url and token have to be set, no data will be pushed!")
         return
@@ -182,6 +183,11 @@ def post(html, url=URL_POST, token=TOKEN_POST):
         proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5h://{PROXY}'}
         if proxies:
             logger.info("Using proxy %s for request", PROXY)
+        if substitute_baseurl:
+            # change URL's baseurl to URL_POST
+            original_baseurl = urllib.parse.urlparse(old_url).hostname
+            new_baseurl = urllib.parse.urlparse(url).hostname
+            html = html.replace(original_baseurl, new_baseurl)
         data = {'token': token,
                 # XXX FIXME If date can be extracted from html this would be much better than setting
                 # it explicitly
@@ -194,6 +200,7 @@ def post(html, url=URL_POST, token=TOKEN_POST):
                                       'Content-Type': 'application/octet-stream'})
         if not resp.ok:
             logger.error('Push was unsuccessful')
+        return html
     except Exception as exc:
         logger.error('Some unexpected exception during push has occured %s..', exc)
         return
