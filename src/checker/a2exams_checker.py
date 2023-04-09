@@ -251,32 +251,6 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     return msg
 
 
-def _apply_changes_to_csv(filename=CSV_FILENAME):
-    # Add 4th total_slots column and change from timestamp to date
-    if not os.path.isfile(filename):
-        # nothing to do
-        return
-    updated_rows = []
-    with open(filename) as csvfile:
-        reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city', 'total_slots'])
-        for row in reader:
-            if not row['total_slots']:
-                # substitute empty string for 0
-                row['total_slots'] = 0
-            if timestamp_to_str(row['timestamp']):
-                row.update({'timestamp': timestamp_to_str(row['timestamp'], DATE_FORMAT_GRAFANA)})
-            updated_rows.append(row)
-    # now rewrite original file
-    with open(filename, 'w') as csvfile:
-        fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
-        writer = csv.DictWriter(csvfile, fieldnames)
-        for row in updated_rows:
-            writer.writerow({'timestamp': row['timestamp'],
-                             'free_slots': row['free_slots'],
-                             'city': row['city'],
-                             'total_slots': row['total_slots']})
-
-
 def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
     """
     Dump exams registration information into csv.
@@ -309,8 +283,6 @@ def has_changes(new_data, old_data, chosen_cities=None):
 
 async def main():
     """The infinite loop of check html -> process it -> wait -> check html ..."""
-    # Make sure csv file has total_slots column
-    _apply_changes_to_csv(CSV_FILENAME)
     # fetch initial data to set everything up (default choices for cities etc)
     while not os.path.isfile(LAST_FETCHED):
         # No file with data, let's wait a bit
@@ -328,7 +300,7 @@ async def main():
             new_data = html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
             date = timestamp_to_str(datetime.datetime.now().timestamp())
-            logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
+            logger.info(f"{date} Obtained data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))
                 # update data
