@@ -51,15 +51,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def get_time_since_last_fetched():
-    """
-    Time in ms since last successful fetch based on file modification time
-    """
-    last_fetch_time = os.path.getmtime(LAST_FETCHED)
-    current = datetime.datetime.now().timestamp()
-    return current - last_fetch_time
-
-
 def _close_browser():
     global BROWSER
     global DISPLAY
@@ -175,6 +166,26 @@ def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
         return ''
 
 
+def get_last_fetch_time(human_readable=False):
+    """
+    Return timestamp of the last modification to the last_fetched.html file or
+    a human-readable date and time if requested.
+    """
+    last_fetched = os.path.getmtime(LAST_FETCHED)
+    if not human_readable:
+        return last_fetched
+    return timestamp_to_str(last_fetched)
+
+
+def get_time_since_last_fetched():
+    """
+    Time in ms since last successful fetch based on file modification time
+    """
+    last_fetch_time = get_last_fetch_time()
+    current = datetime.datetime.now().timestamp()
+    return current - last_fetch_time
+
+
 def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL):
     if not url or not token:
         logger.warn("Both url and token have to be set, no data will be pushed!")
@@ -191,7 +202,7 @@ def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=
         data = {'token': token,
                 # XXX FIXME If date can be extracted from html this would be much better than setting
                 # it explicitly
-                'date': timestamp_to_str(datetime.datetime.now().timestamp()),
+                'date': get_last_fetch_time(human_readable=False),
                 'html': html}
         resp = requests.post(url, data=data, proxies=proxies,
                              headers={'Cache-Control': 'no-cache',
@@ -213,31 +224,48 @@ def _parse_args(args):
     return parser.parse_args(args)
 
 
-async def main(fetch_func=_do_fetch_with_browser, retry=POLLING_INTERVAL):
+def _remove_health_file(a_file):
+    if os.path.isfile(a_file):
+        os.unlink(a_file)
+    else:
+        logger.debug('No such file %s', a_file)
+
+
+def _create_health_file(a_file):
+    if not os.path.isfile(HEALTH):
+        with open(HEALTH, 'w') as f:
+            f.write('alive')
+    else:
+        logger.debug('File %s already exists', a_file)
+
+
+async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
+    new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func)
+    if new_data:
+        # push new data to the centralized portal
+        logger.info('New data has been successfully fetched')
+        res = post(new_data, url=URL_POST, token=TOKEN_POST)
+        if not res:
+            logger.warning('No data has been pushed!')
+    else:
+        logger.warning('No new data has been fetched! Will retry later')
+    # update health check file
+    if get_time_since_last_fetched() < HEALTH_THRESHOLD:
+        logger.debug('State: healthy')
+        _create_health_file(HEALTH)
+    else:
+        logger.warning('State: unhealthy, last fetch was > %s seconds ago', HEALTH_THRESHOLD)
+        _remove_health_file(HEALTH)
+
+
+async def main(retry=POLLING_INTERVAL):
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
     parsed_args = _parse_args(sys.argv[1:])
     # clear healthcheck state if it's present from previous runs
-    if os.path.isfile(HEALTH):
-        os.unlink(HEALTH)
+    _remove_health_file(HEALTH)
     try:
         while True:
-            new_data = await fetch(url=URL, filename=LAST_FETCHED)
-            if new_data:
-                # push new data to the centralized portal
-                logger.info('New data has been successfully fetched')
-                post(new_data, url=URL_POST, token=TOKEN_POST)
-            else:
-                logger.warn('No new data has been fetched! Will retry later')
-            # update health check file
-            if get_time_since_last_fetched() < HEALTH_THRESHOLD:
-                logger.debug('State: healthy')
-                if not os.path.isfile(HEALTH):
-                    with open(HEALTH, 'w') as f:
-                        f.write('alive')
-            else:
-                logger.warning('State: unhealthy, last fetch was > %s seconds ago', HEALTH_THRESHOLD)
-                if os.path.isfile(HEALTH):
-                    os.unlink(HEALTH)
+            await run_once()
             # Wait a bit before the next check
             await asyncio.sleep(parsed_args.interval)
     except KeyboardInterrupt:
