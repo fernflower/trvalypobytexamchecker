@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 import pytz
 import unidecode
 
+import utils
+
 
 BASEURL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
@@ -21,8 +23,6 @@ CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 # XXX Later this will be fetched from a centralized repo
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
-DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
-DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
 
 # set up logging
 logging.basicConfig()
@@ -204,15 +204,6 @@ async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_js
     return schools_data
 
 
-def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
-    """Convert timestamp to a human-readable format"""
-    try:
-        int_timestamp = int(float(timestamp))
-        return datetime.datetime.fromtimestamp(int_timestamp).strftime(dt_format)
-    except (ValueError, TypeError):
-        return ''
-
-
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
@@ -224,7 +215,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     msg = ''
     for city in cities:
         city_czech_name = new_data[city]['city_name']
-        date = timestamp_to_str(new_data[city]['timestamp'])
+        date = utils.timestamp_to_str(new_data[city]['timestamp'])
         exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
         # Assume by default there will be nothing to show
         m = ''
@@ -259,7 +250,7 @@ def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
         fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
-            date = timestamp_to_str(schools[city]['timestamp'])
+            date = utils.timestamp_to_str(schools[city]['timestamp'])
             writer.writerow({'timestamp': date,
                              'free_slots': schools[city]['free_slots'],
                              'city': schools[city]['city_name'],
@@ -281,6 +272,19 @@ def has_changes(new_data, old_data, chosen_cities=None):
     return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
+def get_last_fetch_time(human_readable=False):
+    # For now it will be just be the same as th fetcher's method with the same name, but
+    # soon it will be relying on information from the centralized repo.
+    """
+    Return timestamp of the last modification to the last_fetched.html file or
+    a human-readable date and time if requested.
+    """
+    last_fetched = os.path.getmtime(LAST_FETCHED)
+    if not human_readable:
+        return last_fetched
+    return utils.timestamp_to_str(last_fetched)
+
+
 async def main():
     """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
@@ -299,7 +303,7 @@ async def main():
             # See if html has been updated
             new_data = html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
-            date = timestamp_to_str(datetime.datetime.now().timestamp())
+            date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
             logger.info(f"{date} Obtained data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))

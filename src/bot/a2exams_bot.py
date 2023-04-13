@@ -14,6 +14,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
 from checker import a2exams_checker
+import utils
 
 NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
@@ -221,7 +222,7 @@ def admin_status(update: Update, context: CallbackContext) -> None:
         update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         # get timestamp of last_fetched file
-        last_fetch_time = a2exams_checker.timestamp_to_str(os.path.getmtime(a2exams_checker.LAST_FETCHED))
+        last_fetch_time = a2exams_checker.get_last_fetch_time(human_readable=True)
         msg = f'Last fetch time: {last_fetch_time}\nUser subscriptions:\n{_dump_db_data()}'
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=msg)
 
