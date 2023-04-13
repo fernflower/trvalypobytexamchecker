@@ -20,7 +20,7 @@ def get_useragent():
 
 async def do_fetch(url, logger, proxy=None):
     try:
-        proxies = {} if proxy in ('0', 'None', 'no') else {'https': f'socks5h://{proxy}'}
+        proxies = {} if proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
         if proxies:
             logger.info("Using proxy %s for request", proxy)
         resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',

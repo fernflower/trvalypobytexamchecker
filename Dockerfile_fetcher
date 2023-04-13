@@ -51,5 +51,5 @@ CMD tail -f /dev/null
 
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
-COPY . .
+RUN pip install .
 CMD ["python3", "src/fetcher/a2exams_fetcher.py"]

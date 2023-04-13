@@ -20,7 +20,9 @@ POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
-# XXX Later this will be fetched from a centralized repo
+URL_GET = os.getenv('URL_GET')
+TOKEN_GET = os.getenv('TOKEN_GET')
+URL_LAST_FETCHED_TS = 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate'
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 
@@ -272,22 +274,56 @@ def has_changes(new_data, old_data, chosen_cities=None):
     return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
-def get_last_fetch_time(human_readable=False):
+async def get_last_fetch_time(human_readable=False):
     # For now it will be just be the same as th fetcher's method with the same name, but
     # soon it will be relying on information from the centralized repo.
     """
     Return timestamp of the last modification to the last_fetched.html file or
     a human-readable date and time if requested.
     """
-    last_fetched = os.path.getmtime(LAST_FETCHED)
+    if not URL_GET or not TOKEN_GET:
+        # offline mode
+        last_fetched = os.path.getmtime(LAST_FETCHED)
+        if not human_readable:
+            return last_fetched
+        return utils.timestamp_to_str(last_fetched)
+    # Take real timestamp of data from centralized repo
+    ts = await utils.do_fetch(URL_LAST_FETCHED_TS, logger)
     if not human_readable:
-        return last_fetched
-    return utils.timestamp_to_str(last_fetched)
+        return ts
+    return utils.timestamp_to_str(ts)
+
+
+async def get_latest_html(filename=LAST_FETCHED):
+    """
+    Obtain latest html data with exam slots, save it as LAST_FETCHED and return obtained data as text.
+
+    2 different modes of operation are supported:
+      - if TOKEN_GET and URL_GET are set, then the data is fetched over network from a centralized registry;
+      - otherwise it expects new data to magically appear in LAST_FETCHED file and just displays its contents
+    """
+    html = None
+    if not URL_GET or not TOKEN_GET:
+        logger.info("Working in offline mode, just displaying contents of the %s file", LAST_FETCHED)
+        if os.path.isfile(LAST_FETCHED):
+            with open(LAST_FETCHED) as f:
+                html = f.read()
+    # online mode, fetch data from centralized repo as defined by URL_GET
+    logger.info("Working in online mode, fetching data from %s", URL_GET)
+    url = f'{URL_GET}?token={TOKEN_GET}'
+    html = await utils.do_fetch(url, logger)
+    if html:
+        with open(LAST_FETCHED, 'w') as f:
+            f.write(html)
+    if not html:
+        logger.warning("No data fetched!")
+    return html
 
 
 async def main():
     """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
+    html = await get_latest_html()
     while not os.path.isfile(LAST_FETCHED):
         # No file with data, let's wait a bit
         logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
@@ -301,10 +337,13 @@ async def main():
         while True:
             await asyncio.sleep(parsed_args.interval)
             # See if html has been updated
+            await get_latest_html()
             new_data = html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
-            date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
-            logger.info(f"{date} Obtained data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
+            curr_date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
+            date = await get_last_fetch_time(human_readable=True)
+            logger.info("[%s] Obtained data from %s, available slots in %s",
+                        curr_date, date, [c for c in new_data if new_data[c]['free_slots']])
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))
                 # update data

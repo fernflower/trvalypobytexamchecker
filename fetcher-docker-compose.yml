@@ -23,13 +23,3 @@ services:
       interval: 120s
       timeout: 10s
       retries: 5
-  checker:
-    build:
-      context: .
-      dockerfile: Dockerfile_checker
-    volumes:
-      - ./output:/code/output
-    environment:
-      TZ: Europe/Prague
-      POLLING_INTERVAL: 50
-      OUTPUT: output

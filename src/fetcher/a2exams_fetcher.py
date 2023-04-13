@@ -206,7 +206,7 @@ async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_br
     new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func)
     if new_data:
         # push new data to the centralized portal
-        logger.info('New data has been successfully fetched')
+        logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
         res = post(new_data, url=URL_POST, token=TOKEN_POST)
         if not res:
             logger.warning('No data has been pushed!')
