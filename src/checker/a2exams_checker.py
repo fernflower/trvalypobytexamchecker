@@ -283,10 +283,7 @@ async def get_last_fetch_time(human_readable=False):
     """
     if not URL_GET or not TOKEN_GET:
         # offline mode
-        last_fetched = os.path.getmtime(LAST_FETCHED)
-        if not human_readable:
-            return last_fetched
-        return utils.timestamp_to_str(last_fetched)
+        return utils.get_modification_time(LAST_FETCHED, human_readable)
     # Take real timestamp of data from centralized repo
     ts = await utils.do_fetch(URL_LAST_FETCHED_TS, logger)
     if not human_readable:

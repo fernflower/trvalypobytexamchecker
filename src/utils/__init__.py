@@ -1,4 +1,5 @@
 import datetime
+import os
 import random
 import requests
 
@@ -42,3 +43,10 @@ def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
         return datetime.datetime.fromtimestamp(int_timestamp).strftime(dt_format)
     except (ValueError, TypeError):
         return ''
+
+
+def get_modification_time(filename, human_readable=False):
+    modified_ts = os.path.getmtime(filename)
+    if not human_readable:
+        return modified_ts
+    return timestamp_to_str(modified_ts)
