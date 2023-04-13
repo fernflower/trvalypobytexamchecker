@@ -22,7 +22,7 @@ OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 URL_GET = os.getenv('URL_GET')
 TOKEN_GET = os.getenv('TOKEN_GET')
-URL_LAST_FETCHED_TS = 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate'
+URL_LAST_FETCHED_TS = os.getenv('URL_GET_TS', 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
 
@@ -320,8 +320,8 @@ async def get_latest_html(filename=LAST_FETCHED):
 async def main():
     """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
-    html = await get_latest_html()
     while not os.path.isfile(LAST_FETCHED):
+        await get_latest_html()
         # No file with data, let's wait a bit
         logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
         await asyncio.sleep(POLLING_INTERVAL)
