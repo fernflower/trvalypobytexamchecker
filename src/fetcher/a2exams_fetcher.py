@@ -74,6 +74,7 @@ def _get_browser(force=False):
     logger.info('Initialized virtual display')
     options = webdriver.firefox.options.Options()
     options.set_preference("intl.accept_languages", 'cs-CZ')
+    options.set_preference("http.response.timeout", PAGE_LOAD_LIMIT_SECONDS)
     # set user-agent
     useragent = utils.get_useragent()
     logger.info("User-Agent for this request will be %s", useragent)

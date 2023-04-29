@@ -304,7 +304,7 @@ async def get_latest_html(filename=LAST_FETCHED):
         logger.info("Working in offline mode, just displaying contents of the %s file", LAST_FETCHED)
         if os.path.isfile(LAST_FETCHED):
             with open(LAST_FETCHED) as f:
-                html = f.read()
+                return f.read()
     # online mode, fetch data from centralized repo as defined by URL_GET
     logger.info("Working in online mode, fetching data from %s", URL_GET)
     url = f'{URL_GET}?token={TOKEN_GET}'
