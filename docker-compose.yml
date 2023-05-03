@@ -4,10 +4,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile_checker
+    ports:
+      - 4000:4000
+    privileged: true
     volumes:
       - ./output:/code/output
     environment:
       TZ: Europe/Prague
+      POLLING_INTERVAL: 30
+    depends_on:
+      - tor-socks-proxy-local
   bot:
     build:
       context: .

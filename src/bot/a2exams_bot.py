@@ -14,6 +14,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import unidecode
 
 from checker import a2exams_checker
+import utils
 
 NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
@@ -22,6 +23,11 @@ DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
 
 SCHOOLS_DATA = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
+
+# XXX FIXME This should not be there but can't think of a better way to get last update time for generic status
+# Using a coroutine to get last fetched time is not an option
+OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
+LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
 # set up logging
 logging.basicConfig()
@@ -221,7 +227,7 @@ def admin_status(update: Update, context: CallbackContext) -> None:
         update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         # get timestamp of last_fetched file
-        last_fetch_time = a2exams_checker.timestamp_to_str(os.path.getmtime(a2exams_checker.LAST_FETCHED))
+        last_fetch_time = utils.get_modification_time(LAST_FETCHED, human_readable=True)
         msg = f'Last fetch time: {last_fetch_time}\nUser subscriptions:\n{_dump_db_data()}'
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=msg)
 

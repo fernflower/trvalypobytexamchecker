@@ -5,27 +5,26 @@ import datetime
 import json
 import logging
 import os
-import random
 import sys
-import time
 
 from bs4 import BeautifulSoup
 import pytz
-import requests
 import unidecode
 
+import utils
 
-URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
+
+BASEURL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 # interval to wait before repeating the request
-POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', 15))
+POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 TZ = 'Europe/Prague'
-OUTPUT_DIR = 'output'
+OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
+URL_GET = os.getenv('URL_GET')
+TOKEN_GET = os.getenv('TOKEN_GET')
+URL_LAST_FETCHED_TS = os.getenv('URL_GET_TS', 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 LAST_FETCHED_JSON = os.path.join(OUTPUT_DIR, 'last_fetched.json')
-DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
-DATE_FORMAT_GRAFANA = '%Y-%m-%d %H:%M:%S'
-PROXY = os.getenv('PROXY', 'tor-socks-proxy-local:9150')
 
 # set up logging
 logging.basicConfig()
@@ -33,30 +32,14 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-async def _do_fetch(url):
-    try:
-        proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5h://{PROXY}'}
-        if proxies:
-            logger.info(f"Using proxy {PROXY} for request")
-        resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
-                                                           'Pragma': 'no-cache',
-                                                           'User-agent': 'Mozilla/5.0'})
-    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
-        return
-    except Exception as exc:
-        logger.error(f'Some unexpected exception has occured {exc}..')
-        return
-    if resp.ok:
-        return resp.text
-
-
 def _extract_data(html, tag, cls, strings_only=True):
     soup = BeautifulSoup(html, features="lxml")
-    return [e.text.split() if strings_only else e for e in soup.find_all(tag)
-            if getattr(e, tag) and cls in getattr(e, tag)["class"]]
+    all_tags = soup.find_all(tag, {'class': cls})
+    return [t.text.split() if strings_only else t for t in all_tags]
 
 
 def _reconstruct_city_name(city_strings, no_diacrytics=True):
+
     """ Returns a city name and positional number of first word after it
     """
     # Town may consist of several words - compensate for that
@@ -67,19 +50,24 @@ def _reconstruct_city_name(city_strings, no_diacrytics=True):
     return city, not_a_name_num
 
 
-def _html_to_schools_urls(html, tag='div', cls='col-6'):
+def _html_to_schools_urls(html, tag='li', cls='', baseurl=BASEURL):
     res = {}
     tags = _extract_data(html, tag, cls, strings_only=False)
     for tag in tags:
-        city_strings = tag.find('div').text.split()
+        city_strings = tag.find('div')
         if not city_strings:
+            # This can happen if some non-town related fields have been matched
             continue
+        city_strings = city_strings.text.split()
         city_name, _ = _reconstruct_city_name(city_strings)
+        if not tag.find('a'):
+            # invalid data, school block should have link to the schools
+            continue
         url = tag.find('a').attrs.get('href')
         # This should filter out occasional non-city matches
         if not url or not city_name:
             continue
-        res[city_name] = f'{URL}{url}'
+        res[city_name] = f'{baseurl}{url}'
     return res
 
 
@@ -123,7 +111,7 @@ def _html_to_exam_slots(html, tag='div', cls='terminy'):
     return res
 
 
-def _html_to_schools(html, tag='div', cls='town'):
+def _html_to_schools(html, tag='li', cls=''):
     """
     In case layout changes this function only has to be tuned to extract necessary data.
     Returned value is a dict with no-diacrytics-city-name used as keys
@@ -135,10 +123,17 @@ def _html_to_schools(html, tag='div', cls='town'):
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
         city_name, not_a_name_num = _reconstruct_city_name(city_info, no_diacrytics=False)
-        total_schools = int(city_info[not_a_name_num].lstrip('('))
+        try:
+            total_schools = int(city_info[not_a_name_num].lstrip('('))
+        except:
+            # Block with schools has ended, that is some irrelevant data already, skip the rest completely
+            break
         free_slots = city_info[-1] == 'Vybrat'
         status = city_info[-1]
         city_name_no_diacrytics = unidecode.unidecode(city_name)
+        url = urls_data.get(city_name_no_diacrytics)
+        if not url:
+            logger.warn(f'No url has been found for {city_name} among {urls_data}')
         res[city_name_no_diacrytics] = {'free_slots': free_slots,
                                         # total slots might be updated later after school page is parsed
                                         'total_slots': 0,
@@ -146,7 +141,7 @@ def _html_to_schools(html, tag='div', cls='town'):
                                         'status': status,
                                         'city_name': city_name,
                                         'timestamp': timestamp,
-                                        'url': urls_data[city_name_no_diacrytics]}
+                                        'url': url}
     return res
 
 
@@ -158,24 +153,7 @@ def _parse_args(args, cities_choices):
     return parser.parse_args(args)
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL):
-    """
-    Fetches recent version of registration website. If request fails for some reason will retry until success.
-    Return html and saves it in a file if filename parameter is passed.
-    """
-    res = await _do_fetch(url=url)
-    while not res:
-        print(f"Looks like connection error, will try {url} again later")
-        await asyncio.sleep(random.randint(1, retry_interval))
-        res = await _do_fetch(url=url)
-    # record new data
-    if filename:
-        with open(filename, 'w') as f:
-            f.write(res)
-    return res
-
-
-def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='div', cls='town', cities_filter=None):
+def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='li', cls='', cities_filter=None):
     """
     Read last saved html and load exams registration data. No fetching here, just give what was saved last.
     """
@@ -198,42 +176,34 @@ def _dump_schools_to_file(filename, schools):
             f.write(json.dumps(schools))
 
 
-async def fetch_schools(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='div', cls='town'):
+def html_to_schools(html_file=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
     """
-    Fetch recent data, update last saved html and return the exams registration data.
+    Generate last_fetched.json from html data, save it locally and return exams registration data.
     """
-    logger.debug(f'Trying to fetch {url}..')
-    start = time.time()
-    html = await fetch(url, filename=filename)
+    with open(html_file) as f:
+        html = f.read()
     res = _html_to_schools(html, tag=tag, cls=cls)
-    end = time.time()
-    logger.debug(f'Fetched successfully in {end - start} seconds.')
     _dump_schools_to_file(filename_json, res)
     return res
 
 
 async def fetch_exam_slots(url, tag='div', cls='terminy'):
+    # NOTE(ivasilev) This will need to be split between fetcher and checker.
+    # Currently this functionality is not supported
     html = await fetch(url, retry_interval=5)
     return _html_to_exam_slots(html, tag=tag, cls=cls)
 
 
-async def fetch_schools_with_exam_slots(url=URL, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
-    schools_data = await fetch_schools(url, filename)
+async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
+    # NOTE(ivasilev) This will need to be split between fetcher and checker.
+    # Currently this functionality is not supported
+    schools_data = _html_to_schools(html)
     # now fetch additional information for schools with open registration and update schools data
     for city in [c for c in schools_data if schools_data[c]['free_slots']]:
         exam_slots = await fetch_exam_slots(schools_data[city]['url'])
         schools_data[city]['total_slots'] = exam_slots['total']
     _dump_schools_to_file(filename_json, schools_data)
     return schools_data
-
-
-def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):
-    """Convert timestamp to a human-readable format"""
-    try:
-        int_timestamp = int(float(timestamp))
-        return datetime.datetime.fromtimestamp(int_timestamp).strftime(dt_format)
-    except (ValueError, TypeError):
-        return ''
 
 
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
@@ -247,7 +217,7 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     msg = ''
     for city in cities:
         city_czech_name = new_data[city]['city_name']
-        date = timestamp_to_str(new_data[city]['timestamp'])
+        date = utils.timestamp_to_str(new_data[city]['timestamp'])
         exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
         # Assume by default there will be nothing to show
         m = ''
@@ -270,34 +240,8 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
         msg = f'Update from {date}:\n{msg}'
         # If requested - add url
         if url_in_header:
-            msg = f'{URL}\n{msg}'
+            msg = f'{BASEURL}\n{msg}'
     return msg
-
-
-def _apply_changes_to_csv(filename=CSV_FILENAME):
-    # Add 4th total_slots column and change from timestamp to date
-    if not os.path.isfile(filename):
-        # nothing to do
-        return
-    updated_rows = []
-    with open(filename) as csvfile:
-        reader = csv.DictReader(csvfile, fieldnames=['timestamp', 'free_slots', 'city', 'total_slots'])
-        for row in reader:
-            if not row['total_slots']:
-                # substitute empty string for 0
-                row['total_slots'] = 0
-            if timestamp_to_str(row['timestamp']):
-                row.update({'timestamp': timestamp_to_str(row['timestamp'], DATE_FORMAT_GRAFANA)})
-            updated_rows.append(row)
-    # now rewrite original file
-    with open(filename, 'w') as csvfile:
-        fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
-        writer = csv.DictWriter(csvfile, fieldnames)
-        for row in updated_rows:
-            writer.writerow({'timestamp': row['timestamp'],
-                             'free_slots': row['free_slots'],
-                             'city': row['city'],
-                             'total_slots': row['total_slots']})
 
 
 def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
@@ -308,7 +252,7 @@ def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
         fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
         writer = csv.DictWriter(csvfile, fieldnames)
         for city in tracked_cities:
-            date = timestamp_to_str(schools[city]['timestamp'])
+            date = utils.timestamp_to_str(schools[city]['timestamp'])
             writer.writerow({'timestamp': date,
                              'free_slots': schools[city]['free_slots'],
                              'city': schools[city]['city_name'],
@@ -330,11 +274,58 @@ def has_changes(new_data, old_data, chosen_cities=None):
     return any(old_data[c]['free_slots'] != new_data[c]['free_slots'] for c in cities_to_check)
 
 
+async def get_last_fetch_time(human_readable=False):
+    # For now it will be just be the same as th fetcher's method with the same name, but
+    # soon it will be relying on information from the centralized repo.
+    """
+    Return timestamp of the last modification to the last_fetched.html file or
+    a human-readable date and time if requested.
+    """
+    if not URL_GET or not TOKEN_GET:
+        # offline mode
+        return utils.get_modification_time(LAST_FETCHED, human_readable)
+    # Take real timestamp of data from centralized repo
+    ts = await utils.do_fetch(URL_LAST_FETCHED_TS, logger)
+    if not human_readable:
+        return ts
+    return utils.timestamp_to_str(ts)
+
+
+async def get_latest_html(filename=LAST_FETCHED):
+    """
+    Obtain latest html data with exam slots, save it as LAST_FETCHED and return obtained data as text.
+
+    2 different modes of operation are supported:
+      - if TOKEN_GET and URL_GET are set, then the data is fetched over network from a centralized registry;
+      - otherwise it expects new data to magically appear in LAST_FETCHED file and just displays its contents
+    """
+    html = None
+    if not URL_GET or not TOKEN_GET:
+        logger.info("Working in offline mode, just displaying contents of the %s file", LAST_FETCHED)
+        if os.path.isfile(LAST_FETCHED):
+            with open(LAST_FETCHED) as f:
+                return f.read()
+    # online mode, fetch data from centralized repo as defined by URL_GET
+    logger.info("Working in online mode, fetching data from %s", URL_GET)
+    url = f'{URL_GET}?token={TOKEN_GET}'
+    html = await utils.do_fetch(url, logger)
+    if html:
+        with open(LAST_FETCHED, 'w') as f:
+            f.write(html)
+    if not html:
+        logger.warning("No data fetched!")
+    return html
+
+
 async def main():
-    # Make sure csv file has total_slots column
-    _apply_changes_to_csv(CSV_FILENAME)
+    """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
-    schools = await fetch_schools_with_exam_slots(url=URL)
+    while not os.path.isfile(LAST_FETCHED):
+        await get_latest_html()
+        # No file with data, let's wait a bit
+        logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
+        await asyncio.sleep(POLLING_INTERVAL)
+    schools = html_to_schools(LAST_FETCHED)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
     chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
@@ -342,10 +333,14 @@ async def main():
         old_data = {}
         while True:
             await asyncio.sleep(parsed_args.interval)
-            new_data = await fetch_schools_with_exam_slots(url=URL)
+            # See if html has been updated
+            await get_latest_html()
+            new_data = html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
-            date = timestamp_to_str(datetime.datetime.now().timestamp())
-            logger.info(f"{date} Fetched data, available slots in {[c for c in new_data if new_data[c]['free_slots']]}")
+            curr_date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
+            date = await get_last_fetch_time(human_readable=True)
+            logger.info("[%s] Obtained data from %s, available slots in %s",
+                        curr_date, date, [c for c in new_data if new_data[c]['free_slots']])
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))
                 # update data

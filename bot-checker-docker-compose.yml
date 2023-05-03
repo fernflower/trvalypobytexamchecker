@@ -1,0 +1,35 @@
+version: "3.7"
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile_bot
+    volumes:
+      - ./checker-output:/code/output
+    environment:
+      TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
+      DEVELOPER_CHAT_ID: "$DEVELOPER_CHAT_ID"
+      POLLING_INTERVAL: 17
+      TZ: Europe/Prague
+    depends_on:
+      - redis
+  redis:
+    image: "redis:alpine"
+    command: redis-server --appendonly yes
+    volumes:
+       - ./storage/redis/data:/data
+  checker:
+    build:
+      context: .
+      dockerfile: Dockerfile_checker
+    volumes:
+      - ./checker-output:/code/output
+    environment:
+      TZ: Europe/Prague
+      POLLING_INTERVAL: 50
+      OUTPUT: output
+      TOKEN_GET: "$TOKEN_GET"
+      URL_GET: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
+
+volumes:
+  redis-data:

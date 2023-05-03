@@ -21,7 +21,6 @@ Karlovy Vary :(
 Klatovy :(
 Kolín :(
 Liberec :(
-Mariánské Lázně :(
 Olomouc :(
 Ostrava :(
 Písek :(
@@ -29,12 +28,12 @@ Plzeň :(
 Praha :(
 Přerov :(
 Tábor :(
-Ústí nad Labem :(
+Ústí Nad Labem :(
 Volyně :(
 Zlín :("""
 LAST_FETCHED_JSON = 'tests/data/last_fetched.json'
 CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hradec Kralove', 'Jindrichuv Hradec',
-          'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Marianske Lazne', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
+          'Karlovy Vary', 'Klatovy', 'Kolin', 'Liberec', 'Olomouc', 'Ostrava', 'Pisek', 'Plzen',
           'Praha', 'Prerov', 'Tabor', 'Usti Nad Labem', 'Volyne', 'Zlin']
 
 
@@ -61,19 +60,6 @@ def test_get_urls(main_page_html):
     urls = a2exams_checker._html_to_schools_urls(main_page_html)
     assert urls.keys() == set(CITIES)
     assert urls['Praha'] == 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996'
-
-
-def test_add_total_slots_column():
-    old_data = "1643015225.059401,False,Břeclav\n1643015225.059401,False,Hodonín\n"
-    new_data = "2022-01-24 10:07:05,False,Břeclav,0\n2022-01-24 10:07:05,False,Hodonín,0\n"
-
-    old_out = tempfile.NamedTemporaryFile()
-    with open(old_out.name, 'w') as f:
-        f.write(old_data)
-    a2exams_checker._apply_changes_to_csv(old_out.name)
-    with open(old_out.name) as f:
-        data = f.read()
-        assert data == new_data
 
 
 def test_get_schools():
@@ -109,7 +95,7 @@ def test_diff_to_str_no_prev_state():
     _assert_matches(msg, expected)
     # Make sure URL is shown when requested
     msg = a2exams_checker.diff_to_str(new_data, url_in_header=True)
-    assert msg.startswith(a2exams_checker.URL)
+    assert msg.startswith(a2exams_checker.BASEURL)
     # If schools has free slots and total_slots information is collected and > 0, then display it as well
     new_data_free_slots = copy.deepcopy(new_data)
     new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
@@ -191,14 +177,3 @@ def test_has_changes():
     # test that new_data with a diminished cities list doesn't raise exception
     new_data.pop('Tabor')
     assert not a2exams_checker.has_changes(new_data, old_data)
-
-
-@pytest.mark.asyncio
-@mock.patch('requests.get', new_callable=unittest.mock.Mock)
-async def test_exception_during_fetch(requests_get_mock):
-    # Emulate situation when an exception occurs somewhere in requests (Issue #22)
-    for exc in [requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
-                Exception('Something has gone seveeeeeerely wrong')]:
-        requests_get_mock.side_effect = Exception('Something has gone seveeeeerely wrong')
-        r = await a2exams_checker._do_fetch('No such url')
-        assert not r

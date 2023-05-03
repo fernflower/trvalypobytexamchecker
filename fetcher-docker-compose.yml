@@ -1,0 +1,25 @@
+version: "3.7"
+services:
+  fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile_fetcher
+    ports:
+      - 4000:4000
+    privileged: true
+    volumes:
+      - ./output:/code/output
+    environment:
+      OUTPUT: output
+      POLLING_INTERVAL: 50
+      TOKEN_GET: "$TOKEN_GET"
+      TOKEN_POST: "$TOKEN_POST"
+      URL_POST: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
+      # NOTE(ivasilev) The endpoint for testing with local repository
+      # URL_POST: "http://172.17.0.1:7777/trvaly-pobyt/a2/online-prihlaska"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /code/output/healthy"]
+      interval: 120s
+      timeout: 10s
+      retries: 5

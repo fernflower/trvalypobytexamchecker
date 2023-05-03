@@ -4,4 +4,5 @@ RUN apk add --no-cache gcc musl-dev linux-headers tzdata curl
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 COPY . .
+RUN pip install .
 CMD ["python", "src/checker/a2exams_checker.py"]
