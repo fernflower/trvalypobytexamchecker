@@ -20,6 +20,7 @@ NOTIFICATIONS_PAUSED = False
 UPDATE_INTERVAL = 20
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DEVELOPER_CHAT_ID = os.getenv('DEVELOPER_CHAT_ID')
+EXAMS_CHANNEL = os.getenv('EXAMS_CHANNEL')
 
 SCHOOLS_DATA = a2exams_checker.get_schools_from_file()
 REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
@@ -178,6 +179,13 @@ def _do_inform(context, chat_ids, new_state, prev_state):
             logger.error(f'An error has occurred during sending a message to {chat_id}: {exc}')
 
 
+def _send_update_to_channel(context: CallbackContext, new_state: dict, prev_state: dict) -> None:
+    """A single message with update (all cities, no filtering) is done here"""
+    message = a2exams_checker.diff_to_str(new_state, prev_state, url_in_header=True)
+    if message:
+        context.bot.send_message(chat_id=EXAMS_CHANNEL, text=message)
+
+
 def inform_about_change(context: CallbackContext) -> None:
     global SCHOOLS_DATA
     new_data = a2exams_checker.get_schools_from_file()
@@ -186,6 +194,8 @@ def inform_about_change(context: CallbackContext) -> None:
         new_state = copy.deepcopy(new_data)
         prev_state = copy.deepcopy(SCHOOLS_DATA)
         logger.info(f'New state = {new_state}\nOld state = {prev_state}')
+        # Send message to the channel
+        _send_update_to_channel(context, new_state, prev_state)
         context.dispatcher.run_async(_do_inform, context, _get_all_subscribers(), new_state, prev_state)
         SCHOOLS_DATA = new_data
 
