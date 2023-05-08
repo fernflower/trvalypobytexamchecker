@@ -11,6 +11,7 @@ services:
       TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
       DEVELOPER_CHAT_ID: "$DEVELOPER_CHAT_ID"
       POLLING_INTERVAL: 17
+      FETCHER_DOWN_THRESHOLD: 120
       TZ: Europe/Prague
     depends_on:
       - redis

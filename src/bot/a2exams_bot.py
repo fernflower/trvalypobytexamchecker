@@ -31,7 +31,7 @@ REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
-FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', 60))
+FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', 120))
 IS_FETCHER_OK = True
 
 # set up logging
