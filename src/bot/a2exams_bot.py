@@ -1,6 +1,7 @@
 """A telegram bot to check and track A2 exams registration"""
 
 import copy
+import datetime
 import html
 import json
 import logging
@@ -29,6 +30,9 @@ REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 # Using a coroutine to get last fetched time is not an option
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
+
+FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', 60))
+IS_FETCHER_OK = True
 
 # set up logging
 logging.basicConfig()
@@ -237,9 +241,26 @@ def admin_status(update: Update, context: CallbackContext) -> None:
         update.effective_message.reply_text('This command is restricted for admin users only')
     else:
         # get timestamp of last_fetched file
-        last_fetch_time = utils.get_modification_time(LAST_FETCHED, human_readable=True)
+        last_fetch_time = a2exams_checker.get_last_fetch_time_from_data(human_readable=True)
         msg = f'Last fetch time: {last_fetch_time}\nUser subscriptions:\n{_dump_db_data()}'
         context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=msg)
+
+
+def track_fetcher_status(context: CallbackContext) -> None:
+    global IS_FETCHER_OK
+    # Only updates for a status change will be sent not to get swamped
+    last_update_ts = a2exams_checker.get_last_fetch_time_from_data(human_readable=False)
+    delta = int(datetime.datetime.now().timestamp()) - int(float(last_update_ts))
+    if delta > FETCHER_DOWN_THRESHOLD:
+        # we are in trouble, fetcher has been blocked or down for some time
+        if IS_FETCHER_OK:
+            last_fetch_time = a2exams_checker.get_last_fetch_time_from_data(human_readable=True)
+            context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=f'Fetcher is down, last update happened at {last_fetch_time}')
+        IS_FETCHER_OK = False
+    else:
+        if not IS_FETCHER_OK:
+            context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text='Fetcher is up')
+        IS_FETCHER_OK = True
 
 
 # NOTE(ivasilev) Shamelessly borrowed from
@@ -284,6 +305,7 @@ def run():
     updater.dispatcher.add_handler(CommandHandler('adminstatus', admin_status))
     updater.dispatcher.add_error_handler(error_handler)
     updater.job_queue.run_repeating(inform_about_change, interval=UPDATE_INTERVAL, first=0)
+    updater.job_queue.run_repeating(track_fetcher_status, interval=UPDATE_INTERVAL, first=0)
     updater.start_polling()
     updater.idle()
 

@@ -111,7 +111,7 @@ def _html_to_exam_slots(html, tag='div', cls='terminy'):
     return res
 
 
-def _html_to_schools(html, tag='li', cls=''):
+async def _html_to_schools(html, tag='li', cls=''):
     """
     In case layout changes this function only has to be tuned to extract necessary data.
     Returned value is a dict with no-diacrytics-city-name used as keys
@@ -119,6 +119,7 @@ def _html_to_schools(html, tag='li', cls=''):
     res = {}
     timestamp = datetime.datetime.now(tz=pytz.timezone(TZ)).timestamp()
     schools_data = _extract_data(html, tag, cls)
+    timestamp = await get_last_fetch_time()
     urls_data = _html_to_schools_urls(html)
     # Sometimes the name of a town consists of several words, account for that
     for city_info in schools_data:
@@ -176,13 +177,13 @@ def _dump_schools_to_file(filename, schools):
             f.write(json.dumps(schools))
 
 
-def html_to_schools(html_file=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
+async def html_to_schools(html_file=LAST_FETCHED, filename_json=LAST_FETCHED_JSON, tag='li', cls=''):
     """
     Generate last_fetched.json from html data, save it locally and return exams registration data.
     """
     with open(html_file) as f:
         html = f.read()
-    res = _html_to_schools(html, tag=tag, cls=cls)
+    res = await _html_to_schools(html, tag=tag, cls=cls)
     _dump_schools_to_file(filename_json, res)
     return res
 
@@ -197,7 +198,7 @@ async def fetch_exam_slots(url, tag='div', cls='terminy'):
 async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
     # NOTE(ivasilev) This will need to be split between fetcher and checker.
     # Currently this functionality is not supported
-    schools_data = _html_to_schools(html)
+    schools_data = await _html_to_schools(html)
     # now fetch additional information for schools with open registration and update schools data
     for city in [c for c in schools_data if schools_data[c]['free_slots']]:
         exam_slots = await fetch_exam_slots(schools_data[city]['url'])
@@ -275,17 +276,29 @@ def has_changes(new_data, old_data, chosen_cities=None):
 
 
 async def get_last_fetch_time(human_readable=False):
-    # For now it will be just be the same as th fetcher's method with the same name, but
-    # soon it will be relying on information from the centralized repo.
     """
     Return timestamp of the last modification to the last_fetched.html file or
     a human-readable date and time if requested.
     """
-    if not URL_GET or not TOKEN_GET:
+    if not URL_LAST_FETCHED_TS:
         # offline mode
         return utils.get_modification_time(LAST_FETCHED, human_readable)
     # Take real timestamp of data from centralized repo
     ts = await utils.do_fetch(URL_LAST_FETCHED_TS, logger)
+    if not human_readable:
+        return ts
+    return utils.timestamp_to_str(ts)
+
+
+def get_last_fetch_time_from_data(human_readable=False):
+    """
+    Return timestamp of the data from the latest json file or a human-readable date and time if requested.
+    """
+    new_data = get_schools_from_file()
+    # take timestamp from the first city for now
+    # XXX FIXME(ivasilev) One day there'll be a real date field
+    random_city_data = new_data[list(new_data.keys())[0]] if new_data.keys() else {}
+    ts = random_city_data.get('timestamp', '')
     if not human_readable:
         return ts
     return utils.timestamp_to_str(ts)
@@ -325,7 +338,7 @@ async def main():
         # No file with data, let's wait a bit
         logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
         await asyncio.sleep(POLLING_INTERVAL)
-    schools = html_to_schools(LAST_FETCHED)
+    schools = await html_to_schools(LAST_FETCHED)
     all_cities = sorted(schools.keys())
     parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
     chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
@@ -335,10 +348,11 @@ async def main():
             await asyncio.sleep(parsed_args.interval)
             # See if html has been updated
             await get_latest_html()
-            new_data = html_to_schools(LAST_FETCHED)
+            new_data = await html_to_schools(LAST_FETCHED)
             cities = schools.keys() if not chosen_cities else chosen_cities
             curr_date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
-            date = await get_last_fetch_time(human_readable=True)
+            # Here date will be taken from data to reflect real state of things
+            date = get_last_fetch_time_from_data(human_readable=True)
             logger.info("[%s] Obtained data from %s, available slots in %s",
                         curr_date, date, [c for c in new_data if new_data[c]['free_slots']])
             if not old_data or has_changes(new_data, old_data, cities):
