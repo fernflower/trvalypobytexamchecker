@@ -41,6 +41,9 @@ LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
 HEALTH_THRESHOLD = int(os.getenv('HEALTH_THRESHOLD', '60'))
 PAGE_LOAD_LIMIT_SECONDS = 20
+# Initial time to wait if the fetch didn't get through
+DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
+BACKOFF = 0
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -61,7 +64,6 @@ def _close_browser():
     if DISPLAY:
         DISPLAY.stop()
         DISPLAY = None
-
 
 
 def _get_browser(force=False):
@@ -112,19 +114,21 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     return page_source
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
+async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3):
     """
-    Fetches recent version of registration website. If request fails for some reason will retry until success.
+    Fetches recent version of registration website. If request fails for some reason will retry N times.
     Return html and saves it in a file if filename parameter is passed.
     """
     res = await fetch_func(url=url)
-    while not res:
+    attempts_left = attempts
+    while attempts_left and not res:
+        attempts_left -= 1
         retry_in = int(retry_interval / 3 + random.randint(1, int(2 * retry_interval / 3)))
         print(f"Looks like connection error, will try {url} again later in {retry_in}")
         await asyncio.sleep(retry_in)
         res = await fetch_func(url=url)
-    # record new data
-    if filename:
+    # record new data if there is any
+    if filename and res:
         with open(filename, 'w') as f:
             f.write(res)
     return res
@@ -204,6 +208,7 @@ def _create_health_file(a_file):
 
 
 async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
+    global BACKOFF
     new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func)
     if new_data:
         # push new data to the centralized portal
@@ -213,6 +218,7 @@ async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_br
             logger.warning('No data has been pushed!')
     else:
         logger.warning('No new data has been fetched! Will retry later')
+        BACKOFF = BACKOFF * 2 + DEFAULT_BACKOFF
     # update health check file
     if get_time_since_last_fetched() < HEALTH_THRESHOLD:
         logger.debug('State: healthy')
@@ -224,11 +230,16 @@ async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_br
 
 async def main(retry=POLLING_INTERVAL):
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
+    global BACKOFF
     parsed_args = _parse_args(sys.argv[1:])
     # clear healthcheck state if it's present from previous runs
     _remove_health_file(HEALTH)
     try:
         while True:
+            if BACKOFF:
+                logger.warning(f'Waiting {BACKOFF} seconds before next attempt')
+                asyncio.sleep(BACKOFF)
+                BACKOFF = 0
             await run_once()
             # Wait a bit before the next check
             await asyncio.sleep(parsed_args.interval)

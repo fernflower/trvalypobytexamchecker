@@ -31,7 +31,7 @@ REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
-FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', 120))
+FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', '120'))
 IS_FETCHER_OK = True
 
 # set up logging
@@ -255,7 +255,7 @@ def track_fetcher_status(context: CallbackContext) -> None:
         # we are in trouble, fetcher has been blocked or down for some time
         if IS_FETCHER_OK:
             last_fetch_time = a2exams_checker.get_last_fetch_time_from_data(human_readable=True)
-            context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=f'Fetcher is down, last update happened at {last_fetch_time}')
+            context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=f'Fetcher is down, last update happened {delta} seconds ago at {last_fetch_time}')
         IS_FETCHER_OK = False
     else:
         if not IS_FETCHER_OK:
