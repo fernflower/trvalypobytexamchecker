@@ -3,20 +3,28 @@ import os
 import random
 import requests
 
+import fake_useragent
+
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
+UA = fake_useragent.UserAgent(browsers=['firefox'])
+UA.update()
 
 
-def get_useragent():
+def get_useragent(ua=UA):
     # NOTE(ivasilev) Setting useragent with ua.random is a great idea in theory but in practice it leads to
-    # recaptcha warnings as recaptch needs latest version of browsers to run. So let's hardcode it here to
+    # recaptcha warnings as recaptcha needs latest version of browsers to run. So let's hardcode it here to
     # something 100% acceptable and configure fake-useragent with custom data file later
-    # ua = fake_useragent.UserAgent()
     # useragent = ua.random
-    useragents = [
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
-            'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36']
-    return useragents[random.randint(0, len(useragents) - 1)]
+    useragents_firefox = UA.data_browsers['firefox'][0:3]
+    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:2]
+    useragents = useragents_firefox + useragents_safari_ipad
+    # useragents = [
+    #        'Mozilla/5.0 (iPad; CPU iPad OS 10_3_4 like Mac OS X) AppleWebKit/536.1 (KHTML, like Gecko) CriOS/26.0.877.0 Mobile/13Z933 Safari/536.1',
+    #        'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',
+    #        'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
+    #        ]
+    useragent = useragents[random.randint(0, len(useragents) - 1)]
+    return useragent
 
 
 async def do_fetch(url, logger, proxy=None):
