@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 from fetcher import a2exams_fetcher
+import utils
 
 URL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 URL_POST = 'https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska'
@@ -18,7 +19,7 @@ async def test_exception_during_fetch(requests_get_mock):
     for exc in [requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError,
                 Exception('Something has gone seveeeeeerely wrong')]:
         requests_get_mock.side_effect = Exception('Something has gone seveeeeerely wrong')
-        r = await a2exams_fetcher._do_fetch('No such url')
+        r = await a2exams_fetcher._do_fetch_with_browser('No such url')
         assert not r
 
 

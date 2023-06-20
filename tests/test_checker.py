@@ -37,13 +37,14 @@ CITIES = ['Brno', 'Breclav', 'Ceske Budejovice', 'Frydek-Mistek', 'Hodonin', 'Hr
           'Praha', 'Prerov', 'Tabor', 'Usti Nad Labem', 'Volyne', 'Zlin']
 
 
-def test_parse_main_page(main_page_html):
-    parsed_cities = a2exams_checker._html_to_schools(main_page_html)
+@pytest.mark.asyncio
+async def test_parse_main_page(main_page_html):
+    parsed_cities = await a2exams_checker._html_to_schools(main_page_html)
     assert set(CITIES) == parsed_cities.keys()
     # Emulate the situation when something goes wrong and empty\different webpage is returned
-    parsed_cities = a2exams_checker._html_to_schools('')
+    parsed_cities = await a2exams_checker._html_to_schools('')
     assert parsed_cities == {}
-    parsed_cities = a2exams_checker._html_to_schools('<head><body>Oops</body></head>')
+    parsed_cities = await a2exams_checker._html_to_schools('<head><body>Oops</body></head>')
     assert parsed_cities == {}
 
 

@@ -41,6 +41,8 @@ LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
 HEALTH_THRESHOLD = int(os.getenv('HEALTH_THRESHOLD', '60'))
 PAGE_LOAD_LIMIT_SECONDS = 20
+# Initial time to wait if the fetch didn't get through
+DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -61,7 +63,6 @@ def _close_browser():
     if DISPLAY:
         DISPLAY.stop()
         DISPLAY = None
-
 
 
 def _get_browser(force=False):
@@ -96,13 +97,22 @@ def _get_browser(force=False):
 
 
 async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECONDS, wait_for_id='select-town'):
+
+    def _has_recaptcha(browser):
+        captcha = browser.find_elements(By.CSS_SELECTOR,
+                                        "iframe[name^='a-'][src^='https://www.google.com/recaptcha/api2/anchor?']")
+        return bool(captcha)
+
     browser = _get_browser()
     try:
         browser.get(url)
-        await asyncio.sleep(random.randint(0, 4))
-        scroll_to = random.randint(400, 700)
-        browser.execute_script(f'window.scrollTo(0, {scroll_to})')
-        WebDriverWait(browser, wait_for_javascript).until(lambda x: x.find_element(By.ID, wait_for_id))
+        WebDriverWait(browser, wait_for_javascript).until(
+                lambda x: _has_recaptcha(x) or x.find_element(By.ID, wait_for_id))
+        if _has_recaptcha(browser):
+            # if recaptcha has been discovered -> give ample time to solve it, let's say 3x the maximum
+            logger.warning('Recaptcha has been hit, solve it please to continue')
+            # 120 magic constant means 2 mins recaptcha form is valid
+            WebDriverWait(browser, 120).until(lambda x: x.find_element(By.ID, wait_for_id))
         page_source = browser.page_source
     except (WebDriverException, urllib3.exceptions.MaxRetryError) as err:
         logger.error('An error has occured during page loading %s', err)
@@ -112,19 +122,21 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     return page_source
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
+async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3):
     """
-    Fetches recent version of registration website. If request fails for some reason will retry until success.
+    Fetches recent version of registration website. If request fails for some reason will retry N times.
     Return html and saves it in a file if filename parameter is passed.
     """
     res = await fetch_func(url=url)
-    while not res:
+    attempts_left = attempts
+    while attempts_left and not res:
+        attempts_left -= 1
         retry_in = int(retry_interval / 3 + random.randint(1, int(2 * retry_interval / 3)))
         print(f"Looks like connection error, will try {url} again later in {retry_in}")
         await asyncio.sleep(retry_in)
         res = await fetch_func(url=url)
-    # record new data
-    if filename:
+    # record new data if there is any
+    if filename and res:
         with open(filename, 'w') as f:
             f.write(res)
     return res
@@ -203,16 +215,20 @@ def _create_health_file(a_file):
         logger.debug('File %s already exists', a_file)
 
 
-async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser):
-    new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func)
+async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=1):
+    """
+    Returns new_data if some has been fetched successfully or None if fetch failed after K attepmts.
+    """
+    new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func,
+                           attempts=attempts)
     if new_data:
         # push new data to the centralized portal
         logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
         res = post(new_data, url=URL_POST, token=TOKEN_POST)
         if not res:
             logger.warning('No data has been pushed!')
-    else:
-        logger.warning('No new data has been fetched! Will retry later')
+        return new_data
+    logger.warning('No new data has been fetched! Will retry later')
     # update health check file
     if get_time_since_last_fetched() < HEALTH_THRESHOLD:
         logger.debug('State: healthy')
@@ -222,14 +238,24 @@ async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_br
         _remove_health_file(HEALTH)
 
 
-async def main(retry=POLLING_INTERVAL):
+async def main():
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
+    backoff = 0
     parsed_args = _parse_args(sys.argv[1:])
     # clear healthcheck state if it's present from previous runs
     _remove_health_file(HEALTH)
     try:
         while True:
-            await run_once()
+            if backoff:
+                logger.warning(f'Waiting {backoff} seconds before next attempt')
+                await asyncio.sleep(backoff)
+            fetch_result = await run_once()
+            if fetch_result:
+                # fetch is successfull, fetcher is operational again and backoff can be reset
+                backoff = 0
+            else:
+                # increase backoff and to wait till retry next time
+                backoff = backoff * 2 + DEFAULT_BACKOFF
             # Wait a bit before the next check
             await asyncio.sleep(parsed_args.interval)
     except KeyboardInterrupt:
