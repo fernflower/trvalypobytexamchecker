@@ -21,8 +21,8 @@ def get_useragent(ua=UA):
     # recaptcha warnings as recaptcha needs latest version of browsers to run. So let's hardcode it here to
     # something 100% acceptable and configure fake-useragent with custom data file later
     # useragent = ua.random
-    useragents_firefox = UA.data_browsers['firefox'][0:5]
-    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:5]
+    useragents_firefox = UA.data_browsers['firefox'][0:3]
+    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:2]
     useragents = useragents_firefox + useragents_safari_ipad
     # useragents = [
     #        'Mozilla/5.0 (iPad; CPU iPad OS 10_3_4 like Mac OS X) AppleWebKit/536.1 (KHTML, like Gecko) CriOS/26.0.877.0 Mobile/13Z933 Safari/536.1',
