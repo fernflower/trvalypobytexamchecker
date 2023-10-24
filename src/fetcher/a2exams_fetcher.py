@@ -43,6 +43,8 @@ HEALTH_THRESHOLD = int(os.getenv('HEALTH_THRESHOLD', '60'))
 PAGE_LOAD_LIMIT_SECONDS = 20
 # Initial time to wait if the fetch didn't get through
 DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
+COOKIE = os.getenv('COOKIE')
+CURL = os.getenv('CURL', False)
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -96,7 +98,8 @@ def _get_browser(force=False):
     return BROWSER
 
 
-async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECONDS, wait_for_id='select-town'):
+async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECONDS, wait_for_id='select-town',
+                                 cookie=None):
 
     def _has_recaptcha(browser):
         captcha = browser.find_elements(By.CSS_SELECTOR,
@@ -106,8 +109,20 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     browser = _get_browser()
     try:
         browser.get(url)
+        # try to set session cookies
+        if cookie:
+            session_cookie = {'name': 'PHPSESSID',
+                              'value': cookie,
+                              'path': '/',
+                              'domain': 'cestina-pro-cizince.cz',
+                              'secure': False,
+                              'httpOnly': False,
+                              'sameSite': 'None'}
+            browser.add_cookie(session_cookie)
         WebDriverWait(browser, wait_for_javascript).until(
                 lambda x: _has_recaptcha(x) or x.find_element(By.ID, wait_for_id))
+        # Show current cookie
+        logger.debug(f'Current session cookie is %s', (browser.get_cookie('PHPSESSID') or {}).get('value'))
         if _has_recaptcha(browser):
             # if recaptcha has been discovered -> give ample time to solve it, let's say 3x the maximum
             logger.warning('Recaptcha has been hit, solve it please to continue')
@@ -122,12 +137,13 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     return page_source
 
 
-async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3):
+async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3,
+                cookie=None):
     """
     Fetches recent version of registration website. If request fails for some reason will retry N times.
     Return html and saves it in a file if filename parameter is passed.
     """
-    res = await fetch_func(url=url)
+    res = await fetch_func(url=url, cookie=cookie)
     attempts_left = attempts
     while attempts_left and not res:
         attempts_left -= 1
@@ -215,19 +231,29 @@ def _create_health_file(a_file):
         logger.debug('File %s already exists', a_file)
 
 
-async def run_once(retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=1):
+async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, curl=CURL,
+                   validate_func=lambda x: 'Brno' in x):
     """
     Returns new_data if some has been fetched successfully or None if fetch failed after K attepmts.
     """
-    new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED, fetch_func=fetch_func,
-                           attempts=attempts)
+    # if curl parameter is set use plain GET, otherwise fetch with browser
+    if not curl:
+        new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
+                               fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=COOKIE)
+    else:
+        new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
+                               fetch_func=utils.do_fetch, attempts=attempts, cookie=cookie)
     if new_data:
-        # push new data to the centralized portal
-        logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
-        res = post(new_data, url=URL_POST, token=TOKEN_POST)
-        if not res:
-            logger.warning('No data has been pushed!')
-        return new_data
+        # Validate data, make sure cities list is there
+        if not validate_func(new_data):
+            logger.warning('Data validation failed: captcha trouble?')
+        else:
+            # push new data to the centralized portal
+            logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
+            res = post(new_data, url=URL_POST, token=TOKEN_POST)
+            if not res:
+                logger.warning('No data has been pushed!')
+            return new_data
     logger.warning('No new data has been fetched! Will retry later')
     # update health check file
     if get_time_since_last_fetched() < HEALTH_THRESHOLD:

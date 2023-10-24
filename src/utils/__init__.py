@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import random
 import requests
@@ -9,14 +10,19 @@ DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 UA = fake_useragent.UserAgent(browsers=['firefox'])
 UA.update()
 
+# set up logging
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 def get_useragent(ua=UA):
     # NOTE(ivasilev) Setting useragent with ua.random is a great idea in theory but in practice it leads to
     # recaptcha warnings as recaptcha needs latest version of browsers to run. So let's hardcode it here to
     # something 100% acceptable and configure fake-useragent with custom data file later
     # useragent = ua.random
-    useragents_firefox = UA.data_browsers['firefox'][0:3]
-    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:2]
+    useragents_firefox = UA.data_browsers['firefox'][0:5]
+    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:5]
     useragents = useragents_firefox + useragents_safari_ipad
     # useragents = [
     #        'Mozilla/5.0 (iPad; CPU iPad OS 10_3_4 like Mac OS X) AppleWebKit/536.1 (KHTML, like Gecko) CriOS/26.0.877.0 Mobile/13Z933 Safari/536.1',
@@ -27,14 +33,16 @@ def get_useragent(ua=UA):
     return useragent
 
 
-async def do_fetch(url, logger, proxy=None):
+async def do_fetch(url, proxy=None, cookie=None):
     try:
         proxies = {} if proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
         if proxies:
             logger.info("Using proxy %s for request", proxy)
-        resp = requests.get(url, proxies=proxies, headers={'Cache-Control': 'no-cache',
-                                                           'Pragma': 'no-cache',
-                                                           'User-agent': get_useragent()})
+        headers = {'Cache-Control': 'no-cache',
+                   'Pragma': 'no-cache', 'User-agent': get_useragent()}
+        if cookie:
+            headers['Cookie'] = cookie
+        resp = requests.get(url, proxies=proxies, headers=headers)
     except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
         return
     except Exception as exc:
