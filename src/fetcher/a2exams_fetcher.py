@@ -43,6 +43,7 @@ HEALTH_THRESHOLD = int(os.getenv('HEALTH_THRESHOLD', '60'))
 PAGE_LOAD_LIMIT_SECONDS = 20
 # Initial time to wait if the fetch didn't get through
 DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
+CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '3600'))
 COOKIE = os.getenv('COOKIE')
 CURL = os.getenv('CURL', False)
 
@@ -282,6 +283,8 @@ async def main():
             else:
                 # increase backoff and to wait till retry next time
                 backoff = backoff * 2 + DEFAULT_BACKOFF
+                if backoff > CAP_BACKOFF:
+                    backoff = CAP_BACKOFF
             # Wait a bit before the next check
             await asyncio.sleep(parsed_args.interval)
     except KeyboardInterrupt:
