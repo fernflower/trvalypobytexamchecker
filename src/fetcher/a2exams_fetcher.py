@@ -46,6 +46,7 @@ DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
 CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '3600'))
 COOKIE = os.getenv('COOKIE')
 CURL = os.getenv('CURL', False)
+EMAIL_ALERT = os.getenv('EMAIL_ALERT', 'cookie refresh')
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -267,6 +268,7 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
 
 async def main():
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
+    fail_notification_sent = False
     backoff = 0
     parsed_args = _parse_args(sys.argv[1:])
     # clear healthcheck state if it's present from previous runs
@@ -280,7 +282,10 @@ async def main():
             if fetch_result:
                 # fetch is successfull, fetcher is operational again and backoff can be reset
                 backoff = 0
+                fail_notification_sent = False
             else:
+                if not fail_notification_sent:
+                    fail_notification_sent = utils.send_mail(EMAIL_ALERT)
                 # increase backoff and to wait till retry next time
                 backoff = backoff * 2 + DEFAULT_BACKOFF
                 if backoff > CAP_BACKOFF:

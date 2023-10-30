@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import requests
+import smtplib
 
 import fake_useragent
 
@@ -14,6 +15,44 @@ UA.update()
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+EMAIL_USER = os.environ.get('EMAIL_USER')
+EMAIL_PASS = os.environ.get('EMAIL_PASS')
+MAILHUB = os.environ.get('MAILHUB', 'smtp.gmail.com')
+TO_ADDR = os.environ.get('TO_ADDR')
+
+SMTP = None
+
+
+def _get_smtp():
+    global SMTP
+    if SMTP:
+        return SMTP
+    try:
+        SMTP = smtplib.SMTP_SSL(MAILHUB, 465)
+        SMTP.login(EMAIL_USER, EMAIL_PASS)
+        return SMTP
+    except smtplib.SMTPAuthenticationError:
+        logger.warning('Failed to authenticate to mail server')
+    except smtplib.SMTPException as exc:
+        logger.warning('Failed to setup smtp connection %s', exc)
+
+
+def _reset_smtp():
+    global SMTP
+    SMTP = None
+
+
+def send_mail(subject, text=''):
+    smtp = _get_smtp()
+    body = f"Subject: {subject}\n{text}"
+    try:
+        smtp.sendmail(EMAIL_USER, TO_ADDR, body)
+    except smtplib.SMTPException as exc:
+        logger.warning('Failed to send mail %s', exc)
+        _reset_smtp()
+        return False
+    return True
 
 
 def get_useragent(ua=UA):
