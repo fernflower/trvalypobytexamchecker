@@ -18,7 +18,8 @@ logger.setLevel(logging.DEBUG)
 
 EMAIL_USER = os.environ.get('EMAIL_USER')
 EMAIL_PASS = os.environ.get('EMAIL_PASS')
-MAILHUB = os.environ.get('MAILHUB', 'smtp.gmail.com')
+MAILHUB = os.environ.get('MAILHUB')
+MAIL_PORT = int(os.environ.get('MAIL_PORT'))
 TO_ADDR = os.environ.get('TO_ADDR')
 
 SMTP = None
@@ -29,7 +30,8 @@ def _get_smtp():
     if SMTP:
         return SMTP
     try:
-        SMTP = smtplib.SMTP_SSL(MAILHUB, 465)
+        SMTP = smtplib.SMTP(MAILHUB, MAIL_PORT)
+        SMTP.starttls()
         SMTP.login(EMAIL_USER, EMAIL_PASS)
         return SMTP
     except smtplib.SMTPAuthenticationError:
@@ -45,6 +47,8 @@ def _reset_smtp():
 
 def send_mail(subject, text=''):
     smtp = _get_smtp()
+    if not smtp:
+        logger.error("Could not send email")
     body = f"Subject: {subject}\n{text}"
     try:
         smtp.sendmail(EMAIL_USER, TO_ADDR, body)
