@@ -9,23 +9,21 @@ import fake_useragent
 
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
 UA = fake_useragent.UserAgent(browsers=['firefox'])
-UA.update()
 
 # set up logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-EMAIL_USER = os.environ.get('EMAIL_USER')
-EMAIL_PASS = os.environ.get('EMAIL_PASS')
-MAILHUB = os.environ.get('MAILHUB')
-MAIL_PORT = int(os.environ.get('MAIL_PORT'))
-TO_ADDR = os.environ.get('TO_ADDR')
-
 SMTP = None
 
 
 def _get_smtp():
+    EMAIL_USER = os.environ.get('EMAIL_USER')
+    EMAIL_PASS = os.environ.get('EMAIL_PASS')
+    MAILHUB = os.environ.get('MAILHUB')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT'))
+
     global SMTP
     if SMTP:
         return SMTP
@@ -46,6 +44,9 @@ def _reset_smtp():
 
 
 def send_mail(subject, text=''):
+    EMAIL_USER = os.environ.get('EMAIL_USER')
+    TO_ADDR = os.environ.get('TO_ADDR')
+
     smtp = _get_smtp()
     if not smtp:
         logger.error("Could not send email")
@@ -64,9 +65,9 @@ def get_useragent(ua=UA):
     # recaptcha warnings as recaptcha needs latest version of browsers to run. So let's hardcode it here to
     # something 100% acceptable and configure fake-useragent with custom data file later
     # useragent = ua.random
-    useragents_firefox = UA.data_browsers['firefox'][0:3]
-    useragents_safari_ipad = [ua for ua in UA.data_browsers['safari'] if 'iPad' in ua][0:2]
-    useragents = useragents_firefox + useragents_safari_ipad
+    useragents_firefox = set([UA.getFirefox['useragent']] * 3)
+    useragents_safari = set([UA.getSafari['useragent']] * 3)
+    useragents = list(useragents_firefox | useragents_safari)
     # useragents = [
     #        'Mozilla/5.0 (iPad; CPU iPad OS 10_3_4 like Mac OS X) AppleWebKit/536.1 (KHTML, like Gecko) CriOS/26.0.877.0 Mobile/13Z933 Safari/536.1',
     #        'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.2; rv:111.0) Gecko/20100101 Firefox/111.0',

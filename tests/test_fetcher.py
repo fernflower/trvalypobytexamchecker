@@ -45,14 +45,16 @@ async def test_healthy_state(mock_remove_file, mock_create_file, monkeypatch):
     fetch_res = asyncio.Future()
     fetch_res.set_result(None)
     monkeypatch.setattr('fetcher.a2exams_fetcher.get_time_since_last_fetched', lambda: 100500)
-    monkeypatch.setattr('fetcher.a2exams_fetcher.fetch', lambda url, filename, retry_interval, fetch_func: fetch_res)
+    monkeypatch.setattr('fetcher.a2exams_fetcher.fetch',
+                        lambda url, filename, retry_interval, fetch_func, attempts, cookie: fetch_res)
     await a2exams_fetcher.run_once()
     assert mock_remove_file.called
     # Fetching ok -> health status set
     fetch_res = asyncio.Future()
     fetch_res.set_result('some data here')
     monkeypatch.setattr('fetcher.a2exams_fetcher.get_time_since_last_fetched', lambda: 42)
-    monkeypatch.setattr('fetcher.a2exams_fetcher.fetch', lambda url, filename, retry_interval, fetch_func: fetch_res)
+    monkeypatch.setattr('fetcher.a2exams_fetcher.fetch',
+                        lambda url, filename, retry_interval, fetch_func, attempts, cookie: fetch_res)
     await a2exams_fetcher.run_once()
     assert mock_create_file.called
 
