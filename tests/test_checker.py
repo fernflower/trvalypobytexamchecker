@@ -109,7 +109,7 @@ def test_diff_to_str_no_prev_state():
     _assert_matches(msg, expected)
     # Make sure that city_href flag is respected
     msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['A new city', 'Praha'], city_href=True)
-    expected = '<a href="https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996">Praha</a> :) 42 slots'
+    expected = 'Praha :) 42 slots\n\U0001F4DD https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996'
     _assert_matches(msg, expected)
     # Make sure that no exception is raised when list of exam cities changes
     new_data_free_slots = copy.deepcopy(new_data)

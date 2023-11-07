@@ -217,31 +217,29 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False, city_
     cities = [c for c in cities if c in new_data] if cities else new_data.keys()
     msg = ''
 
-    def _format_city(city, city_href=city_href):
-        city_czech_name = new_data[city]['city_name']
-        if not city_href:
-            return city_czech_name
-        return f"<a href=\"{new_data[city]['url']}\">{city_czech_name}</a>"
+    def _happy_message(city):
+        city_name = new_data[city]['city_name']
+        city_url = f"\U0001F4DD {new_data[city]['url']}" if city_href else ''
+        exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
+        return f'{city_name} :){exam_slots_msg}\n{city_url}'
+
+    def _sad_message(city):
+        city_name = new_data[city]['city_name']
+        return f'{city_name} :('
 
     for city in cities:
-        city_name_href = _format_city(city)
-        city_name = _format_city(city, city_href=False)
         date = utils.timestamp_to_str(new_data[city]['timestamp'])
-        exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
         # Assume by default there will be nothing to show
         m = ''
         if not old_data:
             # Just show current state
-            m = (f'{city_name} :(' if not new_data[city]['free_slots'] else
-                 f'{city_name_href} :){exam_slots_msg}')
+            m = _sad_message(city) if not new_data[city]['free_slots'] else _happy_message(city)
         elif old_data:
             if city not in old_data and new_data[city]['free_slots']:
                 # A new city has appeared overnight and there are free exam slots
-                m = f'{city_name_href} :){exam_slots_msg}'
+                m = _happy_message(city)
             elif old_data[city]['free_slots'] != new_data[city]['free_slots']:
-                m = (f'{city_name} :('
-                     if not new_data[city]['free_slots'] else
-                     f'{city_name_href} :){exam_slots_msg}')
+                m = _sad_message(city) if not new_data[city]['free_slots'] else _happy_message(city)
         if m:
             msg += f'{m}\n'
     if msg:

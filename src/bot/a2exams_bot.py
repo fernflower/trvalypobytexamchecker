@@ -32,7 +32,7 @@ OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
 FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', '120'))
-CITY_HREF = os.getenv('CITY_HREF', 'False').lower() in ['0', 'false', 'f']
+CITY_HREF = os.getenv('CITY_HREF', 'False').lower() in ['1', 'true', 't']
 URL_IN_HEADER = os.getenv('URL_IN_HEADER', 'True').lower() in ['1', 'true', 't']
 IS_FETCHER_OK = True
 
