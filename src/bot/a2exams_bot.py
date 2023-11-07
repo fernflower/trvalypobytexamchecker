@@ -32,6 +32,8 @@ OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
 FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', '120'))
+CITY_HREF = os.getenv('CITY_HREF', 'False').lower() in ['0', 'false', 'f']
+URL_IN_HEADER = os.getenv('URL_IN_HEADER', 'True').lower() in ['1', 'true', 't']
 IS_FETCHER_OK = True
 
 # set up logging
@@ -120,7 +122,7 @@ def check(update: Update, context: CallbackContext) -> None:
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
-    msg = a2exams_checker.diff_to_str(schools, url_in_header=True)
+    msg = a2exams_checker.diff_to_str(schools, url_in_header=URL_IN_HEADER, city_href=CITY_HREF)
     response = f'{error_msg}{msg}'
     if not response:
         # NOTE(ivasilev) That is a temporary warning message until issue #23 is resolved
@@ -170,7 +172,8 @@ def _do_inform(context, chat_ids, new_state, prev_state):
     """Asynchronous status update for subscribers is done here"""
     for chat_id in chat_ids:
         chosen_cities = _get_tracked_cities(chat_id)
-        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=True)
+        message = a2exams_checker.diff_to_str(new_state, prev_state, chosen_cities, url_in_header=URL_IN_HEADER,
+                                              city_href=CITY_HREF)
         # if message is empty - then there is no change in chosen_cities, so no need to inform users
         try:
             if message:
@@ -185,8 +188,8 @@ def _do_inform(context, chat_ids, new_state, prev_state):
 
 def _send_update_to_channel(context: CallbackContext, new_state: dict, prev_state: dict) -> None:
     """A single message with update (all cities, no filtering) is done here"""
-    message = a2exams_checker.diff_to_str(new_state, prev_state, url_in_header=True)
-    if message:
+    message = a2exams_checker.diff_to_str(new_state, prev_state, url_in_header=URL_IN_HEADER, city_href=CITY_HREF)
+    if EXAMS_CHANNEL and message:
         context.bot.send_message(chat_id=EXAMS_CHANNEL, text=message)
 
 

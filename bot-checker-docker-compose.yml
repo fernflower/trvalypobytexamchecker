@@ -13,6 +13,8 @@ services:
       POLLING_INTERVAL: 17
       FETCHER_DOWN_THRESHOLD: 150
       TZ: Europe/Prague
+      CITY_HREF: 1
+      URL_IN_HEADER: 0
     depends_on:
       - redis
   redis:

@@ -94,6 +94,10 @@ def test_diff_to_str_no_prev_state():
     msg = a2exams_checker.diff_to_str(new_data, cities=['Brno', 'Praha', 'Tabor', 'nosuchcity'])
     expected = 'Brno :(\nPraha :(\nTábor :('
     _assert_matches(msg, expected)
+    # Make sure that city_href flag is respected but link is not shown when there are no spots
+    msg = a2exams_checker.diff_to_str(new_data, cities=['Brno', 'Praha', 'Tabor', 'nosuchcity'])
+    expected = 'Brno :(\nPraha :(\nTábor :('
+    _assert_matches(msg, expected)
     # Make sure URL is shown when requested
     msg = a2exams_checker.diff_to_str(new_data, url_in_header=True)
     assert msg.startswith(a2exams_checker.BASEURL)
@@ -103,11 +107,16 @@ def test_diff_to_str_no_prev_state():
     msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['Praha'])
     expected = 'Praha :) 42 slots'
     _assert_matches(msg, expected)
+    # Make sure that city_href flag is respected
+    msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['A new city', 'Praha'], city_href=True)
+    expected = '<a href="https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/?progress=2&town=3996">Praha</a> :) 42 slots'
+    _assert_matches(msg, expected)
     # Make sure that no exception is raised when list of exam cities changes
     new_data_free_slots = copy.deepcopy(new_data)
     new_data_free_slots['A new city'] = {'free_slots': True,
                                          'total_slots': 4,
                                          'city_name': 'A new city',
+                                         'url': 'https://pvzpnenivzp.cz',
                                          'timestamp': 42424242}
     new_data_free_slots['Praha'].update({'free_slots': True, 'total_slots': 42})
     msg = a2exams_checker.diff_to_str(new_data_free_slots, cities=['A new city', 'Praha'])

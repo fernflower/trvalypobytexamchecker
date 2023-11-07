@@ -207,7 +207,7 @@ async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_js
     return schools_data
 
 
-def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
+def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False, city_href=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).
     If previous state is passed then only changes to the state will be accounted for.
@@ -216,24 +216,32 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False):
     """
     cities = [c for c in cities if c in new_data] if cities else new_data.keys()
     msg = ''
-    for city in cities:
+
+    def _format_city(city, city_href=city_href):
         city_czech_name = new_data[city]['city_name']
+        if not city_href:
+            return city_czech_name
+        return f"<a href=\"{new_data[city]['url']}\">{city_czech_name}</a>"
+
+    for city in cities:
+        city_name_href = _format_city(city)
+        city_name = _format_city(city, city_href=False)
         date = utils.timestamp_to_str(new_data[city]['timestamp'])
         exam_slots_msg = '' if not new_data[city]['total_slots'] else f' {new_data[city]["total_slots"]} slots'
         # Assume by default there will be nothing to show
         m = ''
         if not old_data:
             # Just show current state
-            m = (f'{city_czech_name} :(' if not new_data[city]['free_slots'] else
-                 f'{city_czech_name} :){exam_slots_msg}')
+            m = (f'{city_name} :(' if not new_data[city]['free_slots'] else
+                 f'{city_name_href} :){exam_slots_msg}')
         elif old_data:
             if city not in old_data and new_data[city]['free_slots']:
                 # A new city has appeared overnight and there are free exam slots
-                m = f'{city_czech_name} :){exam_slots_msg}'
+                m = f'{city_name_href} :){exam_slots_msg}'
             elif old_data[city]['free_slots'] != new_data[city]['free_slots']:
-                m = (f'{city_czech_name} :('
+                m = (f'{city_name} :('
                      if not new_data[city]['free_slots'] else
-                     f'{city_czech_name} :){exam_slots_msg}')
+                     f'{city_name_href} :){exam_slots_msg}')
         if m:
             msg += f'{m}\n'
     if msg:
