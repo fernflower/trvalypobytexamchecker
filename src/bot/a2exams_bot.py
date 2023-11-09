@@ -31,7 +31,7 @@ REDIS = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379'))
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
 
-FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THREASHOLD', '120'))
+FETCHER_DOWN_THRESHOLD = int(os.getenv('FETCHER_DOWN_THRESHOLD', '120'))
 CITY_HREF = os.getenv('CITY_HREF', 'False').lower() in ['1', 'true', 't']
 URL_IN_HEADER = os.getenv('URL_IN_HEADER', 'True').lower() in ['1', 'true', 't']
 IS_FETCHER_OK = True
@@ -122,7 +122,7 @@ def check(update: Update, context: CallbackContext) -> None:
     if error_cities:
         error_msg = f'No exams in {",".join(error_cities)}\n'
     schools = a2exams_checker.get_schools_from_file(cities_filter=requested_cities)
-    msg = a2exams_checker.diff_to_str(schools, url_in_header=URL_IN_HEADER, city_href=CITY_HREF)
+    msg = a2exams_checker.diff_to_str(schools, url_in_header=True, city_href=CITY_HREF)
     response = f'{error_msg}{msg}'
     if not response:
         # NOTE(ivasilev) That is a temporary warning message until issue #23 is resolved
