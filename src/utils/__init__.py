@@ -81,7 +81,7 @@ def get_useragent(ua=UA):
 
 async def do_fetch(url, proxy=None, cookie=None):
     try:
-        proxies = {} if proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
+        proxies = {} if not proxy or proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
         if proxies:
             logger.info("Using proxy %s for request", proxy)
         headers = {'Cache-Control': 'no-cache',

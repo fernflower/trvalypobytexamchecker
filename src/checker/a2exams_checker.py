@@ -290,7 +290,7 @@ async def get_last_fetch_time(human_readable=False):
         # offline mode
         return utils.get_modification_time(LAST_FETCHED, human_readable)
     # Take real timestamp of data from centralized repo
-    ts = await utils.do_fetch(URL_LAST_FETCHED_TS, logger)
+    ts = await utils.do_fetch(URL_LAST_FETCHED_TS)
     if not human_readable:
         return ts
     return utils.timestamp_to_str(ts)
@@ -327,7 +327,7 @@ async def get_latest_html(filename=LAST_FETCHED):
     # online mode, fetch data from centralized repo as defined by URL_GET
     logger.info("Working in online mode, fetching data from %s", URL_GET)
     url = f'{URL_GET}?token={TOKEN_GET}'
-    html = await utils.do_fetch(url, logger)
+    html, err = await utils.do_fetch(url)
     if html:
         with open(LAST_FETCHED, 'w') as f:
             f.write(html)

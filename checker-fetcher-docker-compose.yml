@@ -3,20 +3,26 @@ services:
   fetcher:
     build:
       context: .
-      dockerfile: Dockerfile_fetcher
-    ports:
-      - 4000:4000
-    privileged: true
+      dockerfile: Dockerfile_fetcher_curl
     volumes:
       - ./output:/code/output
     environment:
+      PROXY: "no"
       OUTPUT: output
-      POLLING_INTERVAL: 50
-      TOKEN_GET: "$TOKEN_GET"
+      POLLING_INTERVAL: 15
+      CAP_BACKOFF: 15
+      CURL: 1
+      SEND_MAIL: 0
       TOKEN_POST: "$TOKEN_POST"
       URL_POST: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
-      # NOTE(ivasilev) The endpoint for testing with local repository
-      # URL_POST: "http://172.17.0.1:7777/trvaly-pobyt/a2/online-prihlaska"
+      COOKIE: "$COOKIE"
+      EMAIL_USER: "$EMAIL_USER"
+      EMAIL_PASS: "$EMAIL_PASS"
+      TO_ADDR: "$TO_ADDR"
+      MAIL_PORT: 587
+      MAILHUB: "$MAILHUB"
+      REDIS_URL: "$REDIS_HOST"
+      REDIS_PASSWORD: "$REDIS_PASS"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "test -f /code/output/healthy"]
@@ -31,5 +37,7 @@ services:
       - ./output:/code/output
     environment:
       TZ: Europe/Prague
-      POLLING_INTERVAL: 50
+      POLLING_INTERVAL: 5
       OUTPUT: output
+      TOKEN_GET: "$TOKEN_GET"
+      URL_GET: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"

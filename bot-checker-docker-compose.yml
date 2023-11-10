@@ -10,8 +10,8 @@ services:
       EXAMS_CHANNEL: "$EXAMS_CHANNEL"
       TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN"
       DEVELOPER_CHAT_ID: "$DEVELOPER_CHAT_ID"
-      POLLING_INTERVAL: 17
-      FETCHER_DOWN_THRESHOLD: 150
+      POLLING_INTERVAL: 4
+      FETCHER_DOWN_THRESHOLD: 42
       TZ: Europe/Prague
       CITY_HREF: 1
       URL_IN_HEADER: 0
@@ -30,7 +30,7 @@ services:
       - ./checker-output:/code/output
     environment:
       TZ: Europe/Prague
-      POLLING_INTERVAL: 50
+      POLLING_INTERVAL: 4
       OUTPUT: output
       TOKEN_GET: "$TOKEN_GET"
       URL_GET: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"

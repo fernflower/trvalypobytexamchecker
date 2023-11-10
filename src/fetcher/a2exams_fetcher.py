@@ -8,7 +8,6 @@ Now a plain GET request is not enough and the webpage has to be rendered by a
 browser. For the purpose of clarity and possibility of horizontal scaling fetcher
 functionality has been moved into a separate module.
 """
-import argparse
 import asyncio
 import datetime
 import logging
@@ -45,9 +44,10 @@ PAGE_LOAD_LIMIT_SECONDS = 20
 DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
 CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '3600'))
 COOKIE = os.getenv('COOKIE')
-CURL = os.getenv('CURL', False)
+COOKIE_NAME = os.getenv('COOKIE_NAME', 'PHPSESSID')
+CURL = os.getenv('CURL', True)
 EMAIL_ALERT = os.getenv('EMAIL_ALERT', 'cookie refresh')
-SEND_MAIL = os.getenv('SEND_MAIL', False)
+SEND_MAIL = os.getenv('SEND_MAIL', 'false').lower() in ['t', 'true', '1']
 LAY_LOW = int(os.getenv('LAY_LOW', 333))
 
 # globals to reuse for browser page displaying
@@ -115,7 +115,7 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
         browser.get(url)
         # try to set session cookies
         if cookie:
-            session_cookie = {'name': 'PHPSESSID',
+            session_cookie = {'name': COOKIE_NAME,
                               'value': cookie,
                               'path': '/',
                               'domain': 'cestina-pro-cizince.cz',
@@ -126,7 +126,7 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
         WebDriverWait(browser, wait_for_javascript).until(
                 lambda x: _has_recaptcha(x) or x.find_element(By.ID, wait_for_id))
         # Show current cookie
-        logger.debug(f'Current session cookie is %s', (browser.get_cookie('PHPSESSID') or {}).get('value'))
+        logger.debug(f'Current session cookie is %s', (browser.get_cookie(COOKIE_NAME) or {}).get('value'))
         if _has_recaptcha(browser):
             # if recaptcha has been discovered -> give ample time to solve it, let's say 3x the maximum
             logger.warning('Recaptcha has been hit, solve it please to continue')
@@ -213,13 +213,6 @@ def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=
         return
 
 
-def _parse_args(args):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--interval', help='Interval to poll a website with exams registration',
-                        default=POLLING_INTERVAL, type=int)
-    return parser.parse_args(args)
-
-
 def _remove_health_file(a_file):
     if os.path.isfile(a_file):
         os.unlink(a_file)
@@ -277,9 +270,6 @@ async def main():
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
     fail_notification_sent = False
     backoff = 0
-    parsed_args = _parse_args(sys.argv[1:])
-    # clear healthcheck state if it's present from previous runs
-    _remove_health_file(HEALTH)
     try:
         while True:
             if backoff:
@@ -298,10 +288,12 @@ async def main():
                 if backoff > CAP_BACKOFF:
                     backoff = CAP_BACKOFF
             # Wait a bit before the next check
-            await asyncio.sleep(parsed_args.interval)
+            await asyncio.sleep(POLLING_INTERVAL)
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
         _close_browser()
+        # clear healthcheck state if it's present from previous runs
+        _remove_health_file(HEALTH)
 
 
 if __name__ == "__main__":
