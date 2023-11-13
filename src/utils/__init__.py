@@ -89,13 +89,13 @@ async def do_fetch(url, proxy=None, cookie=None):
         if cookie:
             headers['Cookie'] = cookie
         resp = requests.get(url, proxies=proxies, headers=headers)
-    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
-        return
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as exc:
+        return None, exc
     except Exception as exc:
         logger.error('Some unexpected exception has occured %s..', exc)
-        return
+        return None, exc
     if resp.ok:
-        return resp.text
+        return resp.text, None
 
 
 def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):

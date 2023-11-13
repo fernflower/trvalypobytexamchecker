@@ -47,6 +47,8 @@ CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '3600'))
 COOKIE = os.getenv('COOKIE')
 CURL = os.getenv('CURL', False)
 EMAIL_ALERT = os.getenv('EMAIL_ALERT', 'cookie refresh')
+SEND_MAIL = os.getenv('SEND_MAIL', False)
+LAY_LOW = int(os.getenv('LAY_LOW', 333))
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -134,9 +136,9 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     except (WebDriverException, urllib3.exceptions.MaxRetryError) as err:
         logger.error('An error has occured during page loading %s', err)
         _close_browser()
-        return
+        return None, err
 
-    return page_source
+    return page_source, None
 
 
 async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3,
@@ -145,19 +147,19 @@ async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=
     Fetches recent version of registration website. If request fails for some reason will retry N times.
     Return html and saves it in a file if filename parameter is passed.
     """
-    res = await fetch_func(url=url, cookie=cookie)
+    res, err = await fetch_func(url=url, cookie=cookie)
     attempts_left = attempts
     while attempts_left and not res:
         attempts_left -= 1
         retry_in = int(retry_interval / 3 + random.randint(1, int(2 * retry_interval / 3)))
         print(f"Looks like connection error, will try {url} again later in {retry_in}")
         await asyncio.sleep(retry_in)
-        res = await fetch_func(url=url)
+        res, err = await fetch_func(url=url)
     # record new data if there is any
     if filename and res:
         with open(filename, 'w') as f:
             f.write(res)
-    return res
+    return res, err
 
 
 def get_last_fetch_time(human_readable=False):
@@ -240,11 +242,11 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
     """
     # if curl parameter is set use plain GET, otherwise fetch with browser
     if not curl:
-        new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
-                               fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=COOKIE)
+        new_data, err = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
+                                    fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=COOKIE)
     else:
-        new_data = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
-                               fetch_func=utils.do_fetch, attempts=attempts, cookie=cookie)
+        new_data, err = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
+                                    fetch_func=utils.do_fetch, attempts=attempts, cookie=cookie)
     if new_data:
         # Validate data, make sure cities list is there
         if not validate_func(new_data):
@@ -256,14 +258,19 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
             if not res:
                 logger.warning('No data has been pushed!')
             return new_data
-    logger.warning('No new data has been fetched! Will retry later')
-    # update health check file
-    if get_time_since_last_fetched() < HEALTH_THRESHOLD:
-        logger.debug('State: healthy')
-        _create_health_file(HEALTH)
+    if err:
+        # An exception has been raised during fetch. If we are blocked -> let's wait out
+        logger.error('Looks like we have been blocked. Let us lay low for a while: %s', err)
+        await asyncio.sleep(LAY_LOW)
     else:
-        logger.warning('State: unhealthy, last fetch was > %s seconds ago', HEALTH_THRESHOLD)
-        _remove_health_file(HEALTH)
+        logger.warning('No new data has been fetched! Will retry later')
+        # update health check file
+        if get_time_since_last_fetched() < HEALTH_THRESHOLD:
+            logger.debug('State: healthy')
+            _create_health_file(HEALTH)
+        else:
+            logger.warning('State: unhealthy, last fetch was > %s seconds ago', HEALTH_THRESHOLD)
+            _remove_health_file(HEALTH)
 
 
 async def main():
@@ -284,7 +291,7 @@ async def main():
                 backoff = 0
                 fail_notification_sent = False
             else:
-                if not fail_notification_sent:
+                if SEND_MAIL and not fail_notification_sent:
                     fail_notification_sent = utils.send_mail(EMAIL_ALERT)
                 # increase backoff and to wait till retry next time
                 backoff = backoff * 2 + DEFAULT_BACKOFF
