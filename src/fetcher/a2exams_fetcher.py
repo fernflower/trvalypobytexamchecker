@@ -24,6 +24,7 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 
+from checker import a2exams_checker
 import utils
 
 
@@ -228,22 +229,22 @@ def _create_health_file(a_file):
         logger.debug('File %s already exists', a_file)
 
 
-async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, curl=CURL,
-                   validate_func=lambda x: 'Brno' in x):
+async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, curl=CURL):
     """
     Returns new_data if some has been fetched successfully or None if fetch failed after K attepmts.
     """
     # if curl parameter is set use plain GET, otherwise fetch with browser
     if not curl:
         new_data, err = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
-                                    fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=COOKIE)
+                                    fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=cookie)
     else:
         new_data, err = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
                                     fetch_func=utils.do_fetch, attempts=attempts, cookie=cookie)
     if new_data:
         # Validate data, make sure cities list is there
-        if not validate_func(new_data):
-            logger.warning('Data validation failed: captcha trouble?')
+        schools_json = await a2exams_checker._html_to_schools(new_data)
+        if not schools_json:
+            logger.warning('Data validation failed: expired cookie?')
         else:
             # push new data to the centralized portal
             logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
@@ -266,7 +267,7 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
             _remove_health_file(HEALTH)
 
 
-async def main():
+async def fetch_data(interval=POLLING_INTERVAL, cookie=COOKIE, curl=CURL, attempts=1):
     """ The infinite loop of fetch -> push -> wait -> fetch -> push ... """
     fail_notification_sent = False
     backoff = 0
@@ -275,7 +276,7 @@ async def main():
             if backoff:
                 logger.warning(f'Waiting {backoff} seconds before next attempt')
                 await asyncio.sleep(backoff)
-            fetch_result = await run_once()
+            fetch_result = await run_once(retry_interval=interval, cookie=cookie, curl=curl, attempts=attempts)
             if fetch_result:
                 # fetch is successfull, fetcher is operational again and backoff can be reset
                 backoff = 0
@@ -288,7 +289,7 @@ async def main():
                 if backoff > CAP_BACKOFF:
                     backoff = CAP_BACKOFF
             # Wait a bit before the next check
-            await asyncio.sleep(POLLING_INTERVAL)
+            await asyncio.sleep(interval)
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
         _close_browser()
@@ -297,6 +298,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(main())
-    # asyncio.run(main())
+    asyncio.run(fetch_data())

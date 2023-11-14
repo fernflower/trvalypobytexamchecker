@@ -1,6 +1,4 @@
-import argparse
 import asyncio
-import csv
 import datetime
 import json
 import logging
@@ -19,7 +17,6 @@ BASEURL = 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-prihlaska/'
 POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
-CSV_FILENAME = os.path.join(OUTPUT_DIR, 'out.csv')
 URL_GET = os.getenv('URL_GET')
 TOKEN_GET = os.getenv('TOKEN_GET')
 URL_LAST_FETCHED_TS = os.getenv('URL_GET_TS', 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate')
@@ -146,14 +143,6 @@ async def _html_to_schools(html, tag='li', cls=''):
     return res
 
 
-def _parse_args(args, cities_choices):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--city', help='City to track exams in', choices=cities_choices, action='append')
-    parser.add_argument('--interval', help='Interval to poll a website with exams registration',
-                        default=POLLING_INTERVAL, type=int)
-    return parser.parse_args(args)
-
-
 def get_schools_from_file(filename=LAST_FETCHED_JSON, tag='li', cls='', cities_filter=None):
     """
     Read last saved html and load exams registration data. No fetching here, just give what was saved last.
@@ -251,21 +240,6 @@ def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False, city_
     return msg
 
 
-def write_csv(schools, tracked_cities, filename=CSV_FILENAME):
-    """
-    Dump exams registration information into csv.
-    """
-    with open(filename, 'a', newline='') as csvfile:
-        fieldnames = ['timestamp', 'free_slots', 'city', 'total_slots']
-        writer = csv.DictWriter(csvfile, fieldnames)
-        for city in tracked_cities:
-            date = utils.timestamp_to_str(schools[city]['timestamp'])
-            writer.writerow({'timestamp': date,
-                             'free_slots': schools[city]['free_slots'],
-                             'city': schools[city]['city_name'],
-                             'total_slots': schools[city]['total_slots']})
-
-
 def has_changes(new_data, old_data, chosen_cities=None):
     """
     A (hopefully) useful method to quickly check if the state has changed.
@@ -290,7 +264,7 @@ async def get_last_fetch_time(human_readable=False):
         # offline mode
         return utils.get_modification_time(LAST_FETCHED, human_readable)
     # Take real timestamp of data from centralized repo
-    ts = await utils.do_fetch(URL_LAST_FETCHED_TS)
+    ts, _ = await utils.do_fetch(URL_LAST_FETCHED_TS)
     if not human_readable:
         return ts
     return utils.timestamp_to_str(ts)
@@ -336,22 +310,22 @@ async def get_latest_html(filename=LAST_FETCHED):
     return html
 
 
-async def main():
+async def check_html(cities_filter=None, interval=POLLING_INTERVAL, last_fetched_html_file=LAST_FETCHED):
     """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
-    while not os.path.isfile(LAST_FETCHED):
-        await get_latest_html()
+    logger.debug('Starting checker')
+    while not os.path.isfile(last_fetched_html_file):
+        await get_latest_html(last_fetched_html_file)
         # No file with data, let's wait a bit
-        logging.debug("No file with data found, let's wait %s seconds", POLLING_INTERVAL)
-        await asyncio.sleep(POLLING_INTERVAL)
-    schools = await html_to_schools(LAST_FETCHED)
+        logging.debug("No file with data found, let's wait %s seconds", interval)
+        await asyncio.sleep(interval)
+    schools = await html_to_schools(last_fetched_html_file)
     all_cities = sorted(schools.keys())
-    parsed_args = _parse_args(sys.argv[1:], cities_choices=all_cities)
-    chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in parsed_args.city or []]
+    chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in cities_filter or []]
     try:
         old_data = {}
         while True:
-            await asyncio.sleep(parsed_args.interval)
+            await asyncio.sleep(interval)
             # See if html has been updated
             await get_latest_html()
             new_data = await html_to_schools(LAST_FETCHED)
@@ -363,14 +337,10 @@ async def main():
                         curr_date, date, [c for c in new_data if new_data[c]['free_slots']])
             if not old_data or has_changes(new_data, old_data, cities):
                 logger.info(diff_to_str(new_data, old_data, cities))
-                # update data
-                write_csv(new_data, cities, filename=CSV_FILENAME)
                 old_data = new_data
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(main())
-    # asyncio.run(main())
+    asyncio.run(check_html())
