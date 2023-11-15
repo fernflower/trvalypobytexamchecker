@@ -96,6 +96,30 @@ async def do_fetch(url, proxy=None, cookie=None):
         return None, exc
     if resp.ok:
         return resp.text, None
+    return None, None
+
+
+async def do_post(url, data, proxy=None, cookie=None):
+    try:
+        proxies = {} if not proxy or proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
+        if proxies:
+            logger.info("Using proxy %s for request", proxy)
+        headers = {'Cache-Control': 'no-cache',
+                   'Pragma': 'no-cache',
+                   'User-agent': get_useragent(),
+                   'Content-Type': 'application/octet-stream'}
+        if cookie:
+            headers['Cookie'] = cookie
+        resp = requests.post(url, data=data, headers=headers)
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as exc:
+        return None, exc
+    except Exception as exc:
+        logger.error('Some unexpected exception has occurred during post: %s', exc)
+        return None, exc
+    if resp.ok:
+        return resp.text, None
+    logger.error('Post was unsuccessful')
+    return None, None
 
 
 def timestamp_to_str(timestamp, dt_format=DATETIME_FORMAT):

@@ -34,6 +34,7 @@ POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 # These will be used to push data to the centralized storage
 URL_POST = os.getenv('URL_POST')
 TOKEN_POST = os.getenv('TOKEN_POST')
+TOKEN_GET = os.getenv('TOKEN_GET')
 # Since Apr 1, 2023 connecting via proxy doesn't really work, but let's keep it here just in case
 PROXY = os.getenv('PROXY', 'no')
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
@@ -42,14 +43,16 @@ HEALTH = os.path.join(OUTPUT_DIR, 'healthy')
 HEALTH_THRESHOLD = int(os.getenv('HEALTH_THRESHOLD', '60'))
 PAGE_LOAD_LIMIT_SECONDS = 20
 # Initial time to wait if the fetch didn't get through
-DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '120'))
-CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '3600'))
+DEFAULT_BACKOFF = int(os.getenv('DEFAULT_BACKOFF', '10'))
+CAP_BACKOFF = int(os.getenv('CAP_BACKOFF', '360'))
 COOKIE = os.getenv('COOKIE')
 COOKIE_NAME = os.getenv('COOKIE_NAME', 'PHPSESSID')
 CURL = os.getenv('CURL', True)
 EMAIL_ALERT = os.getenv('EMAIL_ALERT', 'cookie refresh')
 SEND_MAIL = os.getenv('SEND_MAIL', 'false').lower() in ['t', 'true', '1']
 LAY_LOW = int(os.getenv('LAY_LOW', 333))
+STATUS_URL = os.getenv('STATUS_URL')
+FETCHER_ID = os.getenv('FETCHER_ID')
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -142,6 +145,17 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
     return page_source, None
 
 
+async def report_fetcher_status(status, token=TOKEN_POST, url=STATUS_URL):
+    data = {'token': token, 'status': status, 'id': FETCHER_ID}
+    res, _ = await utils.do_post(url=url, data=data)
+    return res
+
+
+async def get_fetcher_status(token=TOKEN_GET, url=STATUS_URL):
+    status, _ = await utils.do_fetch(url=url)
+    return status
+
+
 async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3,
                 cookie=None):
     """
@@ -183,35 +197,21 @@ def get_time_since_last_fetched():
     return current - last_fetch_time
 
 
-def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL):
+async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL):
     if not url or not token:
         logger.warn("Both url and token have to be set, no data will be pushed!")
         return
-    try:
-        proxies = {} if PROXY in ('0', 'None', 'no') else {'https': f'socks5h://{PROXY}'}
-        if proxies:
-            logger.info("Using proxy %s for request", PROXY)
-        if substitute_baseurl:
-            # change URL's baseurl to URL_POST
-            original_baseurl = urllib.parse.urlparse(old_url).hostname
-            new_baseurl = urllib.parse.urlparse(url).hostname
-            html = html.replace(original_baseurl, new_baseurl)
-        data = {'token': token,
-                # XXX FIXME If date can be extracted from html this would be much better than setting
-                # it explicitly
-                'date': get_last_fetch_time(human_readable=False),
-                'html': html}
-        resp = requests.post(url, data=data, proxies=proxies,
-                             headers={'Cache-Control': 'no-cache',
-                                      'Pragma': 'no-cache',
-                                      'User-agent': utils.get_useragent(),
-                                      'Content-Type': 'application/octet-stream'})
-        if not resp.ok:
-            logger.error('Push was unsuccessful')
-        return html
-    except Exception as exc:
-        logger.error('Some unexpected exception during push has occured %s..', exc)
-        return
+    if substitute_baseurl:
+        # change URL's baseurl to URL_POST
+        original_baseurl = urllib.parse.urlparse(old_url).hostname
+        new_baseurl = urllib.parse.urlparse(url).hostname
+        html = html.replace(original_baseurl, new_baseurl)
+    data = {'token': token,
+            # XXX FIXME If date can be extracted from html this would be much better than setting it explicitly
+            'date': get_last_fetch_time(human_readable=False),
+            'html': html}
+    res, _ = await utils.do_post(url=url, data=data)
+    return res
 
 
 def _remove_health_file(a_file):
@@ -245,15 +245,18 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
         schools_json = await a2exams_checker._html_to_schools(new_data)
         if not schools_json:
             logger.warning('Data validation failed: expired cookie?')
+            await report_fetcher_status(status='cookie trouble')
         else:
             # push new data to the centralized portal
+            await report_fetcher_status(status='ok')
             logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
-            res = post(new_data, url=URL_POST, token=TOKEN_POST)
+            res = await post(new_data, url=URL_POST, token=TOKEN_POST)
             if not res:
                 logger.warning('No data has been pushed!')
             return new_data
     if err:
         # An exception has been raised during fetch. If we are blocked -> let's wait out
+        await report_fetcher_status(status='blocked')
         logger.error('Looks like we have been blocked. Let us lay low for a while: %s', err)
         await asyncio.sleep(LAY_LOW)
     else:
@@ -292,9 +295,11 @@ async def fetch_data(interval=POLLING_INTERVAL, cookie=COOKIE, curl=CURL, attemp
             await asyncio.sleep(interval)
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
+    finally:
         _close_browser()
         # clear healthcheck state if it's present from previous runs
         _remove_health_file(HEALTH)
+        await report_fetcher_status(status='down')
 
 
 if __name__ == "__main__":
