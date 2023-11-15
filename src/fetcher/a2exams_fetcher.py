@@ -10,6 +10,7 @@ functionality has been moved into a separate module.
 """
 import asyncio
 import datetime
+import json
 import logging
 import os
 import random
@@ -53,6 +54,7 @@ SEND_MAIL = os.getenv('SEND_MAIL', 'false').lower() in ['t', 'true', '1']
 LAY_LOW = int(os.getenv('LAY_LOW', 333))
 STATUS_URL = os.getenv('STATUS_URL')
 FETCHER_ID = os.getenv('FETCHER_ID')
+BACKUP = os.getenv('BACKUP', 'false').lower() in ['t', 'true', '1']
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -152,15 +154,19 @@ async def report_fetcher_status(status, token=TOKEN_POST, url=STATUS_URL):
 
 
 async def get_fetcher_status(token=TOKEN_GET, url=STATUS_URL):
-    status, _ = await utils.do_fetch(url=url)
-    return status
+    status, _ = await utils.do_fetch(url=f'{url}?token={token}')
+    try:
+        return json.loads(status)
+    except json.JSONDecodeError:
+        return {}
 
 
 async def fetch(url, filename=None, retry_interval=POLLING_INTERVAL, fetch_func=_do_fetch_with_browser, attempts=3,
                 cookie=None):
     """
     Fetches recent version of registration website. If request fails for some reason will retry N times.
-    Return html and saves it in a file if filename parameter is passed.
+    Returns a tuple (html, err). html is saved it in a file if filename parameter is passed.
+    If an error/exception is raised in the process, the html is guaranteed to be None.
     """
     res, err = await fetch_func(url=url, cookie=cookie)
     attempts_left = attempts
@@ -276,6 +282,13 @@ async def fetch_data(interval=POLLING_INTERVAL, cookie=COOKIE, curl=CURL, attemp
     backoff = 0
     try:
         while True:
+            if BACKUP:
+                # Backup fetchers should run only if all others have issues or are blocked
+                status = await get_fetcher_status()
+                if any(status[fetcher_id] not in ['down', 'blocked'] for fetcher_id in status if fetcher_id != FETCHER_ID):
+                    logger.debug('Not running backup fetcher %s, others are still fine', FETCHER_ID)
+                    await asyncio.sleep(POLLING_INTERVAL)
+                    continue
             if backoff:
                 logger.warning(f'Waiting {backoff} seconds before next attempt')
                 await asyncio.sleep(backoff)
