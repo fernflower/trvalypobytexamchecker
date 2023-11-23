@@ -99,7 +99,7 @@ async def do_fetch(url, proxy=None, cookie=None):
     return None, None
 
 
-async def do_post(url, data, proxy=None, cookie=None):
+async def do_post(url, data, proxy=None, cookie=None, content_type='application/octet-stream'):
     try:
         proxies = {} if not proxy or proxy in ('0', 'None', 'no', None) else {'https': f'socks5h://{proxy}'}
         if proxies:
@@ -107,7 +107,7 @@ async def do_post(url, data, proxy=None, cookie=None):
         headers = {'Cache-Control': 'no-cache',
                    'Pragma': 'no-cache',
                    'User-agent': get_useragent(),
-                   'Content-Type': 'application/octet-stream'}
+                   'Content-Type': content_type}
         if cookie:
             headers['Cookie'] = cookie
         resp = requests.post(url, data=data, headers=headers)

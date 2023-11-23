@@ -1,0 +1,28 @@
+version: "3.7"
+services:
+  fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile_fetcher_curl
+    volumes:
+      - ./output:/code/output
+    environment:
+      PROXY: "no"
+      OUTPUT: output
+      POLLING_INTERVAL: 8
+      CAP_BACKOFF: 10
+      CURL: 1
+      SEND_MAIL: 0
+      TOKEN_POST: "$TOKEN_POST"
+      TOKEN_GET: "$TOKEN_GET"
+      URL_POST_JSON: "https://ciziproblem.cz/trvaly-pobyt/a2/fetched.json"
+      URL_POST: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
+      COOKIE: "$COOKIE"
+      EMAIL_USER: "$EMAIL_USER"
+      EMAIL_PASS: "$EMAIL_PASS"
+      TO_ADDR: "$TO_ADDR"
+      MAIL_PORT: 587
+      MAILHUB: "$MAILHUB"
+      STATUS_URL: "https://ciziproblem.cz/trvaly-pobyt/a2/fetcher_status"
+      FETCHER_ID: "$FETCHER_ID"
+    restart: always

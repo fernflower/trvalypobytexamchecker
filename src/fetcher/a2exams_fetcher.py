@@ -34,6 +34,7 @@ URL = os.getenv('URL', 'https://cestina-pro-cizince.cz/trvaly-pobyt/a2/online-pr
 POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 # These will be used to push data to the centralized storage
 URL_POST = os.getenv('URL_POST')
+URL_POST_JSON = os.getenv('URL_POST_JSON')
 TOKEN_POST = os.getenv('TOKEN_POST')
 TOKEN_GET = os.getenv('TOKEN_GET')
 # Since Apr 1, 2023 connecting via proxy doesn't really work, but let's keep it here just in case
@@ -203,7 +204,8 @@ def get_time_since_last_fetched():
     return current - last_fetch_time
 
 
-async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL):
+async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL,
+               content_type='application/octet-stream'):
     if not url or not token:
         logger.warn("Both url and token have to be set, no data will be pushed!")
         return
@@ -215,8 +217,9 @@ async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, ol
     data = {'token': token,
             # XXX FIXME If date can be extracted from html this would be much better than setting it explicitly
             'date': get_last_fetch_time(human_readable=False),
+            # XXX FIXME Should be renamed to data
             'html': html}
-    res, _ = await utils.do_post(url=url, data=data)
+    res, _ = await utils.do_post(url=url, data=data, content_type=content_type)
     return res
 
 
@@ -257,6 +260,9 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
             await report_fetcher_status(status='ok')
             logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
             res = await post(new_data, url=URL_POST, token=TOKEN_POST)
+            res_json = await post(json.dumps(schools_json, indent=2), url=URL_POST_JSON,
+                                  token=TOKEN_POST, substitute_baseurl=False,
+                                  content_type='application/json')
             if not res:
                 logger.warning('No data has been pushed!')
             return new_data
