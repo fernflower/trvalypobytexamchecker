@@ -126,8 +126,8 @@ async def _html_to_schools(html, tag='li', cls=''):
         except:
             # Block with schools has ended, that is some irrelevant data already, skip the rest completely
             break
-        free_slots = city_info[-1] == 'Vybrat'
-        status = city_info[-1]
+        status = city_info[-1].strip()
+        free_slots = 'Vybrat' in status
         city_name_no_diacrytics = unidecode.unidecode(city_name)
         url = urls_data.get(city_name_no_diacrytics)
         if not url:
