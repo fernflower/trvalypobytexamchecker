@@ -18,6 +18,7 @@ POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '25'))
 TZ = 'Europe/Prague'
 OUTPUT_DIR = os.getenv('OUTPUT_DIR', 'output')
 URL_GET = os.getenv('URL_GET')
+URL_GET_JSON = os.getenv('URL_GET_JSON')
 TOKEN_GET = os.getenv('TOKEN_GET')
 URL_LAST_FETCHED_TS = os.getenv('URL_GET_TS', 'https://ciziproblem.cz/trvaly-pobyt/a2/lastupdate')
 LAST_FETCHED = os.path.join(OUTPUT_DIR, 'last_fetched.html')
@@ -284,52 +285,73 @@ def get_last_fetch_time_from_data(human_readable=False):
     return utils.timestamp_to_str(ts)
 
 
-async def get_latest_html(filename=LAST_FETCHED):
+async def get_latest_data(filename=LAST_FETCHED, token=TOKEN_GET):
     """
-    Obtain latest html data with exam slots, save it as LAST_FETCHED and return obtained data as text.
+    Obtain latest data with exam slots, save it as filename and return obtained data as text.
+    What to fetch - html or json - will be determined by the name of the file where to save the results.
 
     2 different modes of operation are supported:
-      - if TOKEN_GET and URL_GET are set, then the data is fetched over network from a centralized registry;
-      - otherwise it expects new data to magically appear in LAST_FETCHED file and just displays its contents
+      - if token and get url are set, then the data is fetched over network from a centralized registry;
+      - otherwise it expects new data to magically appear in the filename file and just displays its contents
     """
     html = None
-    if not URL_GET or not TOKEN_GET:
-        logger.info("Working in offline mode, just displaying contents of the %s file", LAST_FETCHED)
-        if os.path.isfile(LAST_FETCHED):
-            with open(LAST_FETCHED) as f:
+    mode = 'json' if filename.endswith('.json') else 'html'
+    url = URL_GET if mode == 'html' else URL_GET_JSON
+    if not url or not token:
+        logger.info("Working in offline mode, just displaying contents of the %s file", filename)
+        if os.path.isfile(filename):
+            with open(filename) as f:
                 return f.read()
     # online mode, fetch data from centralized repo as defined by URL_GET
-    logger.info("Working in online mode, fetching data from %s", URL_GET)
-    url = f'{URL_GET}?token={TOKEN_GET}'
-    html, err = await utils.do_fetch(url)
-    if html:
-        with open(LAST_FETCHED, 'w') as f:
-            f.write(html)
-    if not html:
+    logger.info("Working in online mode, fetching data from %s", url)
+    url = f'{url}?token={token}'
+    data, err = await utils.do_fetch(url)
+    if data:
+        with open(filename, 'w') as f:
+            f.write(data)
+    if not data:
         logger.warning("No data fetched!")
-    return html
+    return data
 
 
-async def check_html(cities_filter=None, interval=POLLING_INTERVAL, last_fetched_html_file=LAST_FETCHED):
+async def get_latest_data_as_json(filename, token=TOKEN_GET):
+    """
+    Basically a wrapper for get_latest_data function that will convert result to json even if source data is html.
+    """
+    mode = 'json' if filename.endswith('.json') else 'html'
+    data = await get_latest_data(filename, token)
+    if mode == 'html':
+        # Perform conversion and return result. Html data doesn't have information about exam slots.
+        return await html_to_schools(filename)
+    if mode == 'json':
+        # Make sure data is json and return it. In case any error happens return empty dict
+        try:
+            return json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            logger.error('Non-json data was returned\n: %s', data)
+            return {}
+
+    new_data = await html_to_schools(last_fetched_file) if mode == 'html' else json.loads(updated_data)
+
+
+async def check(cities_filter=None, interval=POLLING_INTERVAL, last_fetched_file=LAST_FETCHED):
     """The infinite loop of check html -> process it -> wait -> check html ..."""
     # fetch initial data to set everything up (default choices for cities etc)
-    logger.debug('Starting checker')
-    while not os.path.isfile(last_fetched_html_file):
-        await get_latest_html(last_fetched_html_file)
+    mode = 'json' if last_fetched_file.endswith('json') else 'html'
+    logger.debug('Starting checker: %s mode', mode)
+    while not os.path.isfile(last_fetched_file):
+        await get_latest_data(last_fetched_file)
         # No file with data, let's wait a bit
         logging.debug("No file with data found, let's wait %s seconds", interval)
         await asyncio.sleep(interval)
-    schools = await html_to_schools(last_fetched_html_file)
-    all_cities = sorted(schools.keys())
     chosen_cities = [unidecode.unidecode(c.lower().capitalize()) for c in cities_filter or []]
     try:
         old_data = {}
         while True:
             await asyncio.sleep(interval)
-            # See if html has been updated
-            await get_latest_html()
-            new_data = await html_to_schools(LAST_FETCHED)
-            cities = schools.keys() if not chosen_cities else chosen_cities
+            # See if data has been updated
+            new_data = await get_latest_data_as_json(last_fetched_file)
+            cities = new_data.keys() if not chosen_cities else chosen_cities
             curr_date = utils.timestamp_to_str(datetime.datetime.now().timestamp())
             # Here date will be taken from data to reflect real state of things
             date = get_last_fetch_time_from_data(human_readable=True)
@@ -343,4 +365,4 @@ async def check_html(cities_filter=None, interval=POLLING_INTERVAL, last_fetched
 
 
 if __name__ == "__main__":
-    asyncio.run(check_html())
+    asyncio.run(check(last_fetched_file=LAST_FETCHED_JSON))

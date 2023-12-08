@@ -34,6 +34,8 @@ services:
       OUTPUT: output
       TOKEN_GET: "$TOKEN_GET"
       URL_GET: "https://ciziproblem.cz/trvaly-pobyt/a2/online-prihlaska"
+      URL_GET_JSON: "https://ciziproblem.cz/trvaly-pobyt/a2/fetched.json"
+    restart: always
 
 volumes:
   redis-data:
