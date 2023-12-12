@@ -5,6 +5,7 @@ import random
 import requests
 import smtplib
 
+import aiohttp
 import fake_useragent
 
 DATETIME_FORMAT = '%d/%m/%Y %H:%M:%S'
@@ -16,6 +17,21 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 SMTP = None
+
+SESSION = None
+
+
+def get_session():
+    # Prepare session object for aiohttp
+    global SESSION
+    if not SESSION:
+        SESSION = aiohttp.ClientSession()
+    return SESSION
+
+
+async def destroy_session():
+    logger.debug("Destroying aiohttp session")
+    await SESSION.close()
 
 
 def _get_smtp():
@@ -77,6 +93,49 @@ def get_useragent(ua=UA):
         ]
     useragent = useragents[random.randint(0, len(useragents) - 1)]
     return useragent
+
+
+async def do_fetch_async(url, cookie=None):
+    headers = {'Cache-Control': 'no-cache',
+               'Pragma': 'no-cache', 'User-agent': get_useragent()}
+    if cookie:
+        headers['Cookie'] = cookie
+    session = get_session()
+    try:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.text(), None
+            else:
+                logger.warning("Unsuccessful fetch, status code %s", resp.status)
+    except aiohttp.ClientConnectorError as exc:
+        return None, exc
+    except Exception as exc:
+        logger.error('Some unexpected exception has occured %s..', exc)
+        return None, exc
+    return None, None
+
+
+async def do_post_async(url, data, cookie=None, content_type='application/octet-stream'):
+    headers = {'Cache-Control': 'no-cache',
+               'Pragma': 'no-cache',
+               'User-agent': get_useragent(),
+               'Content-Type': content_type}
+    if cookie:
+        headers['Cookie'] = cookie
+    session = get_session()
+    try:
+        async with session.post(url, data=data, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.text(), None
+            else:
+                logger.warning("Unsuccessful post, status code %s", resp.status)
+    except aiohttp.ClientConnectorError as exc:
+        return None, exc
+    except Exception as exc:
+        logger.error('Some unexpected exception has occured %s..', exc)
+        return None, exc
+    logger.error('Post was unsuccessful')
+    return None, None
 
 
 async def do_fetch(url, proxy=None, cookie=None):

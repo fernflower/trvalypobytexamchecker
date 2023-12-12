@@ -56,6 +56,7 @@ LAY_LOW = int(os.getenv('LAY_LOW', 333))
 STATUS_URL = os.getenv('STATUS_URL')
 FETCHER_ID = os.getenv('FETCHER_ID')
 BACKUP = os.getenv('BACKUP', 'false').lower() in ['t', 'true', '1']
+FETCH_DETAILED = os.getenv('FETCH_DETAILED', 'false').lower() in ['t', 'true', 1]
 
 # globals to reuse for browser page displaying
 DISPLAY = None
@@ -150,12 +151,12 @@ async def _do_fetch_with_browser(url, wait_for_javascript=PAGE_LOAD_LIMIT_SECOND
 
 async def report_fetcher_status(status, token=TOKEN_POST, url=STATUS_URL):
     data = {'token': token, 'status': status, 'id': FETCHER_ID}
-    res, _ = await utils.do_post(url=url, data=data)
+    res, _ = await utils.do_post_async(url=url, data=data)
     return res
 
 
 async def get_fetcher_status(token=TOKEN_GET, url=STATUS_URL):
-    status, _ = await utils.do_fetch(url=f'{url}?token={token}')
+    status, _ = await utils.do_fetch_async(url=f'{url}?token={token}')
     try:
         return json.loads(status)
     except json.JSONDecodeError:
@@ -207,7 +208,7 @@ def get_time_since_last_fetched():
 async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, old_url=URL,
                content_type='application/octet-stream'):
     if not url or not token:
-        logger.warn("Both url and token have to be set, no data will be pushed!")
+        logger.warning("Both url and token have to be set, no data will be pushed!")
         return
     if substitute_baseurl:
         # change URL's baseurl to URL_POST
@@ -219,7 +220,7 @@ async def post(html, url=URL_POST, token=TOKEN_POST, substitute_baseurl=True, ol
             'date': get_last_fetch_time(human_readable=False),
             # XXX FIXME Should be renamed to data
             'html': html}
-    res, _ = await utils.do_post(url=url, data=data, content_type=content_type)
+    res, _ = await utils.do_post_async(url=url, data=data, content_type=content_type)
     return res
 
 
@@ -238,6 +239,15 @@ def _create_health_file(a_file):
         logger.debug('File %s already exists', a_file)
 
 
+async def fetch_city_details(session, url, tag='div', cls='terminy'):
+    html, err = await fetch(url=url)
+    if err:
+        logger.error('Could not fetch details', err)
+    if html:
+        return a2exams_checker._html_to_exam_slots(html, tag=tag, cls=cls)
+    return {}
+
+
 async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, curl=CURL):
     """
     Returns new_data if some has been fetched successfully or None if fetch failed after K attepmts.
@@ -248,7 +258,7 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
                                     fetch_func=_do_fetch_with_browser, attempts=attempts, cookie=cookie)
     else:
         new_data, err = await fetch(url=URL, retry_interval=retry_interval, filename=LAST_FETCHED,
-                                    fetch_func=utils.do_fetch, attempts=attempts, cookie=cookie)
+                                    fetch_func=utils.do_fetch_async, attempts=attempts, cookie=cookie)
     if new_data:
         # Validate data, make sure cities list is there
         schools_json = await a2exams_checker._html_to_schools(new_data)
@@ -256,6 +266,15 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
             logger.warning('Data validation failed: expired cookie?')
             await report_fetcher_status(status='cookie trouble')
         else:
+            # XXX FIXME(ivasilev) Still to be done, let's test async http first
+            if FETCH_DETAILED:
+                # Perform additional requests to fetch details - number of slots, exam dates etc
+                tasks = []
+                for city_urls in [c for c in schools_json if schools_data[c]['free_slots']]:
+                    tasks.append(asyncio.create_task(fetch_city_details(url, session)))
+                results = await asyncio.gather(*tasks)
+                # update with city details
+                # TBD
             # push new data to the centralized portal
             await report_fetcher_status(status='ok')
             logger.info('[%s] New data has been successfully fetched', get_last_fetch_time(human_readable=True))
@@ -319,6 +338,7 @@ async def fetch_data(interval=POLLING_INTERVAL, cookie=COOKIE, curl=CURL, attemp
         # clear healthcheck state if it's present from previous runs
         _remove_health_file(HEALTH)
         await report_fetcher_status(status='down')
+        await utils.destroy_session()
 
 
 if __name__ == "__main__":

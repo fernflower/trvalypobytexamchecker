@@ -178,25 +178,6 @@ async def html_to_schools(html_file=LAST_FETCHED, filename_json=LAST_FETCHED_JSO
     return res
 
 
-async def fetch_exam_slots(url, tag='div', cls='terminy'):
-    # NOTE(ivasilev) This will need to be split between fetcher and checker.
-    # Currently this functionality is not supported
-    html = await fetch(url, retry_interval=5)
-    return _html_to_exam_slots(html, tag=tag, cls=cls)
-
-
-async def fetch_schools_with_exam_slots(html, filename=LAST_FETCHED, filename_json=LAST_FETCHED_JSON):
-    # NOTE(ivasilev) This will need to be split between fetcher and checker.
-    # Currently this functionality is not supported
-    schools_data = await _html_to_schools(html)
-    # now fetch additional information for schools with open registration and update schools data
-    for city in [c for c in schools_data if schools_data[c]['free_slots']]:
-        exam_slots = await fetch_exam_slots(schools_data[city]['url'])
-        schools_data[city]['total_slots'] = exam_slots['total']
-    _dump_schools_to_file(filename_json, schools_data)
-    return schools_data
-
-
 def diff_to_str(new_data, old_data=None, cities=None, url_in_header=False, city_href=False):
     """
     Return a human readable state of exams registration in chosen cities (no cities chosen means all cities).

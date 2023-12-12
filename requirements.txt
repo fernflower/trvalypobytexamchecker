@@ -1,4 +1,5 @@
 # checker
+aiohttp
 asyncio
 beautifulsoup4
 lxml
