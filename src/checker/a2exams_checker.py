@@ -246,7 +246,7 @@ async def get_last_fetch_time(human_readable=False):
         # offline mode
         return utils.get_modification_time(LAST_FETCHED, human_readable)
     # Take real timestamp of data from centralized repo
-    ts, _ = await utils.do_fetch(URL_LAST_FETCHED_TS)
+    ts, _ = await utils.do_fetch_async(URL_LAST_FETCHED_TS)
     if not human_readable:
         return ts
     return utils.timestamp_to_str(ts)
@@ -286,7 +286,7 @@ async def get_latest_data(filename=LAST_FETCHED, token=TOKEN_GET):
     # online mode, fetch data from centralized repo as defined by URL_GET
     logger.info("Working in online mode, fetching data from %s", url)
     url = f'{url}?token={token}'
-    data, err = await utils.do_fetch(url)
+    data, err = await utils.do_fetch_async(url)
     if data:
         with open(filename, 'w') as f:
             f.write(data)
@@ -343,6 +343,7 @@ async def check(cities_filter=None, interval=POLLING_INTERVAL, last_fetched_file
                 old_data = new_data
     except KeyboardInterrupt:
         sys.exit('Interrupted by user.')
+        utils.destroy_session()
 
 
 if __name__ == "__main__":

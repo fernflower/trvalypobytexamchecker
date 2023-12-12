@@ -30,8 +30,9 @@ def get_session():
 
 
 async def destroy_session():
-    logger.debug("Destroying aiohttp session")
-    await SESSION.close()
+    if SESSION:
+        logger.debug("Destroying aiohttp session")
+        await SESSION.close()
 
 
 def _get_smtp():
