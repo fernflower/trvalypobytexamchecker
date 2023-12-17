@@ -114,6 +114,7 @@ async def do_fetch_async(url, cookie=None):
         return None, exc
     except Exception as exc:
         logger.error('Some unexpected exception has occured %s..', exc)
+        await destroy_session()
         return None, exc
     return None, None
 
