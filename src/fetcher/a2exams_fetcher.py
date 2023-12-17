@@ -290,6 +290,8 @@ async def run_once(retry_interval=POLLING_INTERVAL, attempts=1, cookie=COOKIE, c
         await report_fetcher_status(status='blocked')
         logger.error('Looks like we have been blocked. Let us lay low for a while: %s', err)
         await asyncio.sleep(LAY_LOW)
+        logger.debug('Recreating session before next retry')
+        await utils.destroy_session()
     else:
         logger.warning('No new data has been fetched! Will retry later')
         # update health check file
